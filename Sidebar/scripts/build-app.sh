@@ -70,6 +70,8 @@ if pgrep -x AgentWorld >/dev/null; then
 fi
 rm -rf "$install_dir/AgentWorld.app"
 cp -R "$app" "$install_dir/"
+# So Spotlight and Launchpad open this build (not an older one with the same name).
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$install_dir/AgentWorld.app"
 
 echo
 echo "Done. Open it from Spotlight or Launchpad (AgentWorld), or run: agentworld app"
