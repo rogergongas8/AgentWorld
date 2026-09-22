@@ -59,6 +59,12 @@ import Testing
 
     @Test func keyParsing() {
         #expect(Terminal.parseKeys([0x71, 0x09, 0x1B, 0x5B, 0x41]) == [.character("q"), .tab, .up])
+        #expect(Terminal.parseKeys(Array("\u{1B}[5~\u{1B}[6~\u{7F}".utf8)) == [.pageUp, .pageDown, .backspace])
+    }
+
+    @Test func mouseParsing() {
+        #expect(Terminal.parseKeys(Array("\u{1B}[<0;5;3M".utf8)) == [.mouse(MouseEvent(action: .press, x: 4, y: 2))])
+        #expect(Terminal.parseKeys(Array("\u{1B}[<65;1;1M\u{1B}[<0;5;3m".utf8)) == [.mouse(MouseEvent(action: .scrollDown, x: 0, y: 0))])
     }
 
     @Test func colorModeDetection() {

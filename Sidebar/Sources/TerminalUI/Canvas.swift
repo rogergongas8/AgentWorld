@@ -83,6 +83,19 @@ public struct Canvas: Sendable {
         for column in x0..<(x1 ?? width) { self[column, y] = Cell(character, style) }
     }
 
+    /// Copies rows `sourceY..<sourceY+rows` of `other` to (x, y), skipping
+    /// blank cells so whatever is underneath shows through.
+    public mutating func blit(_ other: Canvas, x: Int, y: Int, sourceY: Int = 0, rows: Int? = nil) {
+        let count = min(rows ?? other.height, other.height - sourceY)
+        guard count > 0 else { return }
+        for row in 0..<count {
+            for column in 0..<other.width {
+                let cell = other[column, sourceY + row]
+                if cell != .blank { self[x + column, y + row] = cell }
+            }
+        }
+    }
+
     /// Paints `style.bg` behind a region without touching its characters.
     public mutating func tint(x: Int, y: Int, width w: Int, background: RGB) {
         for column in x..<(x + w) where contains(column, y) {

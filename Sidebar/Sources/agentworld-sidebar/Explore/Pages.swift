@@ -1,0 +1,659 @@
+import AgentWorldKit
+import Foundation
+import TerminalUI
+
+/// Builds every explorer screen. Pure: the same inputs give the same page.
+struct Pages {
+    let snapshot: SidebarSnapshot
+    let suggestions: [Suggestion]
+    let repoSuggestions: [Suggestion]
+    let query: String
+    let width: Int
+    let selection: Int
+
+    private var store: SessionStore { snapshot.store }
+    private var config: AgentConfiguration { snapshot.config }
+    private var provider: Provider { snapshot.provider }
+    private var me: String { provider.shortName }
+    private var isLive: Bool { snapshot.connection != .configOnly }
+    private var t: TimeInterval { snapshot.now.timeIntervalSinceReferenceDate }
+
+    static let agentColor = Theme.color(for: .agent)
+    static let skillColor = Theme.color(for: .skill)
+    static let mcpColor = Theme.color(for: .mcp(server: "", tool: ""))
+    static let commandColor = Theme.color(for: .shell)
+    static let pluginColor = RGB(hex: 0xF2C94C)
+    static let repoColor = Theme.claude
+
+    func page(for route: Route) -> Page {
+        var builder = PageBuilder(width: width, selection: selection)
+        switch route {
+        case .home: home(&builder)
+        case .leader: leader(&builder)
+        case .agents: agents(&builder)
+        case .skills: skills(&builder)
+        case .plugins: plugins(&builder)
+        case .mcpServers: mcpServers(&builder)
+        case .commands: commands(&builder)
+        case .repository: repository(&builder)
+        case .search: search(&builder)
+        case .agent(let name): agent(name, &builder)
+        case .skill(let name): skill(name, &builder)
+        case .plugin(let name): plugin(name, &builder)
+        case .mcpServer(let name): mcpServer(name, &builder)
+        case .command(let name): command(name, &builder)
+        case .launch, .window, .folder, .typeFolder: break  // hub-only routes
+        }
+        builder.gap()
+        return builder.build()
+    }
+
+    // MARK: - Home
+
+    private func home(_ b: inout PageBuilder) {
+        let working = store.runningSubagents.count
+        b.header("YOUR CREW", badge: "\(config.agents.count) agents" + (working > 0 ? " · \(working) working" : ""), color: Self.agentColor)
+        b.gap()
+        // The CLI itself leads; one or two rows of agents after it, then "all agents".
+        let cardsPerRow = max(1, (width - 1) / (CharacterCard.width(for: .crew(CharacterLook.claude)) + 1))
+        let shown = Array(config.agents.prefix(max(2, cardsPerRow * 2 - 2)))
+        cardFlow(&b, claude: true, agents: shown)
+        if config.agents.count > shown.count {
+            b.item([StyledLine("◆ ", .fg(Self.agentColor)).appending("all \(config.agents.count) agents", .fg(Theme.text)).trailing("→", .fg(Theme.faint))],
+                   route: .agents, accent: Self.agentColor)
+        }
+
+        let fromPrompt = isLive && !prompts.isEmpty
+        b.header("USE NOW", badge: fromPrompt ? "for your last prompt" : "for this repo", color: Theme.warning)
+        let list = fromPrompt && !suggestions.isEmpty ? suggestions : repoSuggestions
+        if list.isEmpty, !isLive {
+            b.paragraph("Nothing in \(me)'s kit stands out for this repo's stack. Press / to search it.", style: .fg(Theme.faint, italic: true))
+        } else if list.isEmpty {
+            b.paragraph("Send \(me) a prompt and the agents and skills that fit it show up here.", style: .fg(Theme.faint, italic: true))
+        }
+        for suggestion in list {
+            suggestionItem(&b, suggestion)
+        }
+
+        b.header("BROWSE", color: Theme.muted)
+        let usedSkills = store.skillUsage.count
+        browseItem(&b, "◆", "Agents", "\(config.agents.count)", Self.agentColor, .agents)
+        browseItem(&b, "✦", "Skills", "\(config.skills.count)" + (usedSkills > 0 ? " · \(usedSkills) used" : ""), Self.skillColor, .skills)
+        browseItem(&b, "▣", "Plugins", "\(config.plugins.count)", Self.pluginColor, .plugins)
+        browseItem(&b, "↯", "MCP servers", "\(MCPSection.entries(snapshot).count)", Self.mcpColor, .mcpServers)
+        browseItem(&b, "/", "Commands", "\(config.commands.count)", Self.commandColor, .commands)
+        browseItem(&b, "⌂", "This repo", config.repository.stacks.prefix(2).joined(separator: " · "), Self.repoColor, .repository)
+        browseItem(&b, "⌕", "Find anything", "/", Theme.cream, .search)
+    }
+
+    private func browseItem(_ b: inout PageBuilder, _ glyph: String, _ title: String, _ detail: String, _ color: RGB, _ route: Route) {
+        let selected = b.nextIsSelected
+        let line = StyledLine("\(glyph) ", .fg(color, bold: true))
+            .appending(title, .fg(selected ? Theme.cream : Theme.text, bold: selected))
+            .trailing(detail + (selected ? " →" : "  "), .fg(Theme.faint))
+        b.item([line], route: route, accent: color)
+    }
+
+    private func suggestionItem(_ b: inout PageBuilder, _ suggestion: Suggestion) {
+        let (glyph, color, route, kind): (String, RGB, Route, String) = switch suggestion.kind {
+        case .agent: ("◆", Self.agentColor, .agent(suggestion.name), "agent")
+        case .skill: ("✦", Self.skillColor, .skill(suggestion.name), "skill")
+        case .command: ("/", Self.commandColor, .command(suggestion.name), "command")
+        }
+        let name = suggestion.kind == .agent ? suggestion.name : "/" + suggestion.name
+        let first = StyledLine("\(glyph) ", .fg(color, bold: true)).appending(name, .fg(Theme.cream, bold: true)).trailing(kind, .fg(Theme.faint))
+        let second = StyledLine("  matches ", .fg(Theme.faint)).appending(suggestion.reasons.joined(separator: " · "), .fg(Theme.muted, italic: true))
+        b.item([first, second], route: route, accent: color)
+    }
+
+    // MARK: - Character cards
+
+    /// The CLI itself (when `leader`) and then the agents, as character cards.
+    private func cardFlow(_ b: inout PageBuilder, claude leader: Bool, agents: [AgentDefinition]) {
+        var cards: [CardSpec] = []
+        if leader {
+            let status = claudeStatus
+            let since = store.main.since
+            let (now, t, isLive) = (snapshot.now, t, isLive)
+            cards.append(CardSpec(
+                figure: provider.figure,
+                name: me,
+                subtitle: isLive ? status.title.lowercased() : (config.model ?? "ready"),
+                subtitleColor: isLive ? Theme.color(for: status) : Theme.faint,
+                pose: { selected in
+                    selected && !status.isBusy
+                        ? Animator.waving(t: t)
+                        : Animator.pose(status: isLive ? status : .idle, elapsed: now.timeIntervalSince(since), t: t, seed: 0, recentError: false)
+                },
+                route: .leader
+            ))
+        }
+        for (index, agent) in agents.enumerated() {
+            let running = runningSubagent(for: agent)
+            let (now, t) = (snapshot.now, t)
+            let pose: (Bool) -> Pose = { selected in
+                if let running {
+                    return Animator.pose(status: running.state.status, elapsed: now.timeIntervalSince(running.state.since), t: t, seed: index + 1, recentError: false)
+                }
+                return selected ? Animator.waving(t: t) : Animator.pose(status: .idle, elapsed: 0, t: t, seed: index + 1, recentError: false)
+            }
+            cards.append(CardSpec(
+                figure: .crew(CharacterLook(name: agent.name)),
+                name: agent.name,
+                subtitle: running.map { "● " + $0.state.status.title.lowercased() } ?? agent.model ?? agent.plugin ?? agent.scope.rawValue,
+                subtitleColor: running == nil ? Theme.faint : Theme.live,
+                pose: pose,
+                route: .agent(agent.qualifiedName)
+            ))
+        }
+        b.cards(cards)
+    }
+
+    // MARK: - Lists
+
+    private func agents(_ b: inout PageBuilder) {
+        let groups: [(String, [AgentDefinition])] = [
+            ("PROJECT", config.agents.filter { $0.scope == .project }),
+            ("YOURS", config.agents.filter { $0.scope == .user || $0.scope == .local }),
+            ("FROM PLUGINS", config.agents.filter { $0.scope == .plugin }),
+            ("BUILT INTO \(provider.name.uppercased())", config.agents.filter { $0.scope == .builtin }),
+        ]
+        for (title, agents) in groups where !agents.isEmpty {
+            b.header(title, badge: "\(agents.count)", color: Self.agentColor)
+            b.gap()
+            cardFlow(&b, claude: false, agents: agents)
+        }
+        if config.customAgents.isEmpty {
+            b.header("MAKE YOUR OWN", color: Theme.muted)
+            b.paragraph(provider.kind == .claude
+                ? "Custom agents live in .claude/agents/<name>.md (this repo) or ~/.claude/agents (everywhere). Run /agents in Claude to create one: give it a job, a set of tools and a model, and it joins the crew."
+                : "\(provider.name) has no subagents set up here. Its skills, MCP servers and commands are in Browse.", style: .fg(Theme.muted))
+        }
+    }
+
+    private func skills(_ b: inout PageBuilder) {
+        var groups: [(String, [SkillDefinition])] = [
+            ("PROJECT", config.skills.filter { $0.scope == .project }),
+            ("YOURS", config.skills.filter { $0.scope == .user || $0.scope == .local }),
+        ]
+        for plugin in config.plugins {
+            groups.append(("PLUGIN · \(plugin.name.uppercased())", config.skills.filter { $0.plugin == plugin.name }))
+        }
+        for (title, skills) in groups where !skills.isEmpty {
+            b.header(title, badge: "\(skills.count)", color: Self.skillColor)
+            for skill in skills { skillItem(&b, skill) }
+        }
+        if config.skills.isEmpty {
+            b.paragraph("No skills yet. Add one at .claude/skills/<name>/SKILL.md.", style: .fg(Theme.faint, italic: true))
+        }
+    }
+
+    private func skillItem(_ b: inout PageBuilder, _ skill: SkillDefinition) {
+        let usage = skillUsage(skill)
+        let color = Icon.color(for: skill.name)
+        var first = StyledLine("✦ ", .fg(usage == nil ? color : Self.skillColor, bold: true)).appending(skill.name, .fg(Theme.cream, bold: usage != nil))
+        if let usage { first = first.trailing("used ×\(usage.count)", .fg(Self.skillColor)) }
+        let second = StyledLine("  " + (skill.description ?? "no description"), .fg(Theme.faint))
+        b.item([first, second], route: .skill(skill.qualifiedName), accent: Self.skillColor)
+    }
+
+    private func plugins(_ b: inout PageBuilder) {
+        b.header("INSTALLED", badge: "\(config.plugins.count)", color: Self.pluginColor)
+        if config.plugins.isEmpty {
+            b.paragraph(provider.kind == .claude ? "No plugins. Browse marketplaces with /plugin in Claude." : "No plugins or extensions installed for \(provider.name).", style: .fg(Theme.faint, italic: true))
+        }
+        for plugin in config.plugins {
+            var parts: [String] = []
+            if !plugin.skills.isEmpty { parts.append("\(plugin.skills.count) skills") }
+            if !plugin.agents.isEmpty { parts.append("\(plugin.agents.count) agents") }
+            if !plugin.mcpServers.isEmpty { parts.append("mcp") }
+            if plugin.hasHooks { parts.append("hooks") }
+            let first = StyledLine("▣ ", .fg(Self.pluginColor, bold: true)).appending(plugin.name, .fg(Theme.cream, bold: true))
+                .trailing(parts.joined(separator: " · "), .fg(Theme.faint))
+            let second = StyledLine("  " + (plugin.description ?? ""), .fg(Theme.faint))
+            b.item([first, second], route: .plugin(plugin.name), accent: Self.pluginColor)
+        }
+    }
+
+    private func mcpServers(_ b: inout PageBuilder) {
+        let entries = MCPSection.entries(snapshot)
+        b.header("MCP SERVERS", badge: "\(entries.count)", color: Self.mcpColor)
+        if entries.isEmpty {
+            b.paragraph("No MCP servers configured. Add one with `claude mcp add`.", style: .fg(Theme.faint, italic: true))
+        }
+        for entry in entries {
+            var first = StyledLine(entry.usage == nil ? "○ " : "● ", .fg(entry.usage == nil ? Theme.faint : Self.mcpColor, bold: true))
+                .appending(entry.name, .fg(Theme.cream, bold: entry.usage != nil))
+            if let usage = entry.usage { first = first.trailing("×\(usage.count)", .fg(Self.mcpColor)) }
+            let origin = entry.definition.map { definition in
+                definition.plugin.map { "\(definition.transport) · plugin \($0)" } ?? "\(definition.transport) · \(definition.scope.rawValue)"
+            } ?? "claude.ai connector"
+            let detail = entry.usage?.lastDetail.map { origin + " · last: " + $0 } ?? origin
+            b.item([first, StyledLine("  " + detail, .fg(Theme.faint))], route: .mcpServer(entry.name), accent: Self.mcpColor)
+        }
+    }
+
+    private func commands(_ b: inout PageBuilder) {
+        b.header("SLASH COMMANDS", badge: "\(config.commands.count)", color: Self.commandColor)
+        if config.commands.isEmpty {
+            b.paragraph("No custom commands. Add .claude/commands/<name>.md to create one.", style: .fg(Theme.faint, italic: true))
+        }
+        for command in config.commands {
+            let first = StyledLine("/", .fg(Self.commandColor, bold: true)).appending(command.qualifiedName, .fg(Theme.cream, bold: true))
+                .trailing(command.plugin ?? command.scope.rawValue, .fg(Theme.faint))
+            b.item([first, StyledLine("  " + (command.description ?? ""), .fg(Theme.faint))], route: .command(command.qualifiedName), accent: Self.commandColor)
+        }
+    }
+
+    // MARK: - Details
+
+    /// Icon or portrait on the left, title lines on the right.
+    private func hero(_ b: inout PageBuilder, pixels: PixelCanvas, lines: [StyledLine]) {
+        let rows = max(pixels.height / 2, lines.count)
+        b.gap()
+        b.reserve(rows)
+        b.draw { canvas, y in pixels.render(into: &canvas, column: 1, row: y) }
+        let textX = pixels.width + 3
+        let top = b.y
+        b.draw { canvas, y in
+            for (index, line) in lines.enumerated() {
+                line.draw(into: &canvas, x: textX, y: top + index + max(0, (pixels.height / 2 - lines.count) / 2), width: width - textX)
+            }
+        }
+        b.advance(rows)
+    }
+
+    private func portrait(_ figure: CharacterCard.Figure, pose: Pose) -> PixelCanvas {
+        var pixels = PixelCanvas(width: CharacterCard.width(for: figure) - 2, height: CharacterCard.portraitRows * 2)
+        let ground = pixels.height - 1
+        pixels.rect(x: 0, y: ground, width: pixels.width, height: 1, Theme.barEmpty)
+        switch figure {
+        case .claude: CharacterPainter.drawClaude(on: &pixels, x: 1, ground: ground, pose: pose)
+        case .crew(let look): CharacterPainter.drawCrew(on: &pixels, look: look, x: 1, ground: ground, pose: pose)
+        }
+        return pixels
+    }
+
+    private func agent(_ name: String, _ b: inout PageBuilder) {
+        guard let agent = findAgent(name) else { return missing(&b, "agent", name) }
+        let look = CharacterLook(name: agent.name)
+        let running = runningSubagent(for: agent)
+        let pose = running.map {
+            Animator.pose(status: $0.state.status, elapsed: snapshot.now.timeIntervalSince($0.state.since), t: t, seed: 1, recentError: false)
+        } ?? Animator.waving(t: t)
+
+        var lines = [StyledLine(agent.name, .fg(look.body, bold: true))]
+        lines.append(StyledLine(agent.plugin.map { "plugin · \($0)" } ?? agent.scope.rawValue + " agent", .fg(Theme.muted)))
+        lines.append(StyledLine("model ", .fg(Theme.faint)).appending(agent.model ?? "same as \(me)", .fg(Theme.text)))
+        if let running {
+            lines.append(StyledLine("● ", .fg(Theme.live, bold: true)).appending(running.state.action ?? running.state.status.title, .fg(Theme.live)))
+        } else {
+            let runs = runs(of: agent)
+            lines.append(StyledLine(runs.isEmpty ? "not called yet" : "called ×\(runs.count) this session", .fg(runs.isEmpty ? Theme.faint : Self.agentColor)))
+        }
+        hero(&b, pixels: portrait(.crew(look), pose: pose), lines: lines)
+
+        b.header("WHAT IT DOES", color: Self.agentColor)
+        b.paragraph(agent.description ?? "No description in its front matter.")
+
+        b.header("TOOLS", badge: agent.tools.isEmpty ? nil : "\(agent.tools.count)", color: Self.agentColor)
+        if agent.tools.isEmpty {
+            b.paragraph("Inherits every tool \(me) has, MCP servers included.", style: .fg(Theme.muted))
+        } else {
+            b.chips(agent.tools, color: Theme.text)
+        }
+
+        b.header("SKILLS", badge: agent.skills.isEmpty ? nil : "\(agent.skills.count)", color: Self.skillColor)
+        if agent.skills.isEmpty {
+            b.paragraph("None preloaded. It can still load any of your \(config.skills.count) skills when a task calls for one.", style: .fg(Theme.muted))
+        }
+        for name in agent.skills {
+            if let skill = findSkill(name) {
+                skillItem(&b, skill)
+            } else {
+                b.line(StyledLine(" ✦ \(name)", .fg(Theme.faint)))
+            }
+        }
+
+        let runs = runs(of: agent)
+        if !runs.isEmpty {
+            b.header("THIS SESSION", badge: "\(runs.count) runs", color: Self.agentColor)
+            for run in runs.suffix(4).reversed() {
+                let mark = run.isRunning ? "▸" : (run.state.status == .failed ? "✗" : "✓")
+                let color = run.isRunning ? Theme.warning : (run.state.status == .failed ? Theme.error : Theme.live)
+                let took = (run.finishedAt ?? snapshot.now).timeIntervalSince(run.startedAt)
+                b.line(StyledLine(" \(mark) ", .fg(color, bold: true)).appending(run.description ?? "task", .fg(Theme.text))
+                    .trailing("\(Format.duration(took)) · \(run.toolCalls) tools", .fg(Theme.faint)))
+            }
+        }
+
+        b.header("HOW TO CALL IT", color: Theme.muted)
+        b.paragraph("Ask \(me): \"use the \(agent.name) agent to …\". \(me) also sends it work on its own when a task matches its description.", style: .fg(Theme.muted))
+        if let path = agent.path { b.paragraph(abbreviated(path), style: .fg(Theme.faint)) }
+        if let plugin = agent.plugin { pluginLink(&b, plugin) }
+    }
+
+    private func skill(_ name: String, _ b: inout PageBuilder) {
+        guard let skill = findSkill(name) else { return missing(&b, "skill", name) }
+        let usage = skillUsage(skill)
+        var lines = [StyledLine(skill.name, .fg(Theme.cream, bold: true))]
+        lines.append(StyledLine("/" + skill.qualifiedName, .fg(Self.skillColor)))
+        lines.append(StyledLine(skill.plugin.map { "plugin · \($0)" } ?? skill.scope.rawValue + " skill", .fg(Theme.muted)))
+        lines.append(StyledLine(usage.map { "used ×\($0.count) this session" } ?? "not used yet", .fg(usage == nil ? Theme.faint : Self.skillColor)))
+        hero(&b, pixels: Icon.skill(Icon.color(for: skill.name)).render(t: t), lines: lines)
+
+        b.header("WHAT IT DOES", color: Self.skillColor)
+        b.paragraph(skill.description ?? "No description in SKILL.md.")
+
+        b.header("HOW TO USE IT", color: Theme.muted)
+        b.paragraph("Type /\(skill.qualifiedName) in \(me), or just describe the task: \(me) loads the skill by itself when the request matches the description above.", style: .fg(Theme.muted))
+
+        let holders = config.agents.filter { agent in agent.skills.contains { $0.caseInsensitiveCompare(skill.name) == .orderedSame } }
+        if !holders.isEmpty {
+            b.header("AGENTS THAT CARRY IT", color: Self.agentColor)
+            for agent in holders { agentItem(&b, agent) }
+        }
+        if let plugin = skill.plugin { pluginLink(&b, plugin) }
+        if let path = skill.path { b.gap(); b.paragraph(abbreviated(path), style: .fg(Theme.faint)) }
+    }
+
+    private func plugin(_ name: String, _ b: inout PageBuilder) {
+        guard let plugin = config.plugins.first(where: { $0.name == name }) else { return missing(&b, "plugin", name) }
+        var lines = [StyledLine(plugin.name, .fg(Theme.cream, bold: true))]
+        if let version = plugin.version { lines.append(StyledLine("v" + version, .fg(Self.pluginColor))) }
+        if let author = plugin.author { lines.append(StyledLine("by " + author, .fg(Theme.muted))) }
+        lines.append(StyledLine("\(plugin.skills.count) skills · \(plugin.agents.count) agents", .fg(Theme.faint)))
+        hero(&b, pixels: Icon.plugin.render(t: t), lines: lines)
+
+        if let description = plugin.description {
+            b.header("WHAT IT ADDS", color: Self.pluginColor)
+            b.paragraph(description)
+        }
+        let agents = config.agents.filter { $0.plugin == plugin.name }
+        if !agents.isEmpty {
+            b.header("AGENTS", badge: "\(agents.count)", color: Self.agentColor)
+            b.gap()
+            cardFlow(&b, claude: false, agents: agents)
+        }
+        let skills = config.skills.filter { $0.plugin == plugin.name }
+        if !skills.isEmpty {
+            b.header("SKILLS", badge: "\(skills.count)", color: Self.skillColor)
+            for skill in skills { skillItem(&b, skill) }
+        }
+        let commands = config.commands.filter { $0.plugin == plugin.name }
+        if !commands.isEmpty {
+            b.header("COMMANDS", badge: "\(commands.count)", color: Self.commandColor)
+            for command in commands {
+                b.item([StyledLine("/" + command.qualifiedName, .fg(Theme.cream))], route: .command(command.qualifiedName), accent: Self.commandColor)
+            }
+        }
+        if !plugin.mcpServers.isEmpty {
+            b.header("MCP SERVERS", color: Self.mcpColor)
+            for server in plugin.mcpServers {
+                b.item([StyledLine("↯ ", .fg(Self.mcpColor)).appending(server, .fg(Theme.cream))], route: .mcpServer(server), accent: Self.mcpColor)
+            }
+        }
+        if plugin.hasHooks {
+            b.header("HOOKS", color: Theme.muted)
+            b.paragraph("Runs its own hooks on \(provider.name) events (notifications, checks…).", style: .fg(Theme.muted))
+        }
+    }
+
+    private func mcpServer(_ name: String, _ b: inout PageBuilder) {
+        let entry = MCPSection.entries(snapshot).first { $0.name == name }
+        var lines = [StyledLine(name, .fg(Theme.cream, bold: true))]
+        if let definition = entry?.definition {
+            lines.append(StyledLine(definition.transport + " server", .fg(Self.mcpColor)))
+            lines.append(StyledLine(definition.plugin.map { "plugin · \($0)" } ?? definition.scope.rawValue + " config", .fg(Theme.muted)))
+        } else {
+            lines.append(StyledLine("claude.ai connector", .fg(Self.mcpColor)))
+        }
+        if let usage = entry?.usage {
+            lines.append(StyledLine("called ×\(usage.count)", .fg(Self.mcpColor)))
+        } else {
+            lines.append(StyledLine("not called yet", .fg(Theme.faint)))
+        }
+        hero(&b, pixels: Icon.mcp(Self.mcpColor).render(t: t), lines: lines)
+
+        b.header("WHAT IT IS", color: Self.mcpColor)
+        b.paragraph("An MCP server gives \(me) extra tools from another service. \(me) picks them up when a request needs it; you can also ask for it by name.", style: .fg(Theme.muted))
+        if let detail = entry?.usage?.lastDetail {
+            b.header("LAST CALL", color: Self.mcpColor)
+            b.line(StyledLine(" ↯ " + detail, .fg(Theme.text)))
+        }
+        if let plugin = entry?.definition?.plugin { pluginLink(&b, plugin) }
+    }
+
+    private func command(_ name: String, _ b: inout PageBuilder) {
+        guard let command = config.commands.first(where: { $0.qualifiedName == name }) else { return missing(&b, "command", name) }
+        let lines = [
+            StyledLine("/" + command.qualifiedName, .fg(Theme.cream, bold: true)),
+            StyledLine(command.plugin.map { "plugin · \($0)" } ?? command.scope.rawValue + " command", .fg(Theme.muted)),
+        ]
+        hero(&b, pixels: Icon.command.render(t: t), lines: lines)
+        b.header("WHAT IT DOES", color: Self.commandColor)
+        b.paragraph(command.description ?? "No description.")
+        b.header("HOW TO USE IT", color: Theme.muted)
+        b.paragraph("Type /\(command.qualifiedName) in \(me), optionally followed by arguments.", style: .fg(Theme.muted))
+        if let plugin = command.plugin { pluginLink(&b, plugin) }
+    }
+
+    // MARK: - Repository
+
+    private func repository(_ b: inout PageBuilder) {
+        let repo = config.repository
+        var lines = [StyledLine(snapshot.projectName, .fg(Theme.cream, bold: true))]
+        if let branch = store.context.gitBranch { lines.append(StyledLine("git " + branch, .fg(Theme.muted))) }
+        lines.append(StyledLine(repo.stacks.isEmpty ? "stack not detected" : repo.stacks.joined(separator: " · "), .fg(Self.repoColor)))
+        let file = repo.instructionsFile ?? "instructions"
+        lines.append(StyledLine(repo.hasInstructions ? "\(file) · \(repo.instructionsLines) lines" : "no \(file)", .fg(repo.hasInstructions ? Theme.live : Theme.warning)))
+        hero(&b, pixels: Icon.repository.render(t: t), lines: lines)
+
+        b.header("WHAT \(me.uppercased()) KNOWS", badge: file, color: Self.repoColor)
+        if repo.hasInstructions {
+            if let title = repo.instructionsTitle { b.line(StyledLine(" " + title, .fg(Theme.cream, bold: true))) }
+            for line in repo.instructionsExcerpt { b.paragraph(line, style: .fg(Theme.muted), maxLines: 2) }
+        } else {
+            b.paragraph("\(me) starts every session knowing nothing about this repo. Write a \(file) with its structure, commands and conventions (most CLIs, \(me) included, can draft it with /init).", style: .fg(Theme.warning))
+        }
+
+        if !repo.folders.isEmpty {
+            b.header("FOLDERS", badge: "\(repo.folders.count)", color: Theme.muted)
+            b.chips(repo.folders, color: Theme.text)
+        }
+
+        b.header("SET UP FOR THIS REPO", color: Theme.muted)
+        let projectAgents = config.agents.filter { $0.scope == .project }.count
+        let projectSkills = config.skills.filter { $0.scope == .project }.count
+        let projectCommands = config.commands.filter { $0.scope == .project }.count
+        let projectMCP = config.mcpServers.filter { $0.scope == .project || $0.scope == .local }.count
+        browseItem(&b, "◆", "Project agents", "\(projectAgents)", Self.agentColor, .agents)
+        browseItem(&b, "✦", "Project skills", "\(projectSkills)", Self.skillColor, .skills)
+        browseItem(&b, "/", "Project commands", "\(projectCommands)", Self.commandColor, .commands)
+        browseItem(&b, "↯", "Project MCP servers", "\(projectMCP)", Self.mcpColor, .mcpServers)
+        if !repo.hookEvents.isEmpty {
+            b.line(StyledLine(" ⚑ hooks on ", .fg(Theme.muted)).appending(repo.hookEvents.joined(separator: ", "), .fg(Theme.text)))
+        }
+
+        if !repoSuggestions.isEmpty {
+            b.header("GOOD FIT FOR THIS STACK", color: Theme.warning)
+            for suggestion in repoSuggestions { suggestionItem(&b, suggestion) }
+        }
+    }
+
+    // MARK: - The CLI itself (the crew's leader)
+
+    private func leader(_ b: inout PageBuilder) {
+        let status = claudeStatus
+        let pose = isLive
+            ? Animator.pose(status: status, elapsed: snapshot.now.timeIntervalSince(store.main.since), t: t, seed: 0, recentError: false)
+            : Animator.waving(t: t)
+        var lines = [StyledLine(provider.name, .fg(provider.color, bold: true)), StyledLine(provider.tagline, .fg(Theme.muted))]
+        if let model = store.context.model.map(Format.model) ?? config.model { lines.append(StyledLine("model " + model, .fg(Theme.text))) }
+        if isLive {
+            lines.append(StyledLine("\(Theme.glyph(for: status)) " + status.title, .fg(Theme.color(for: status), bold: true)))
+            if let action = store.main.action { lines.append(StyledLine(action, .fg(Theme.text))) }
+        }
+        hero(&b, pixels: portrait(provider.figure, pose: pose), lines: lines)
+        if !isLive {
+            b.gap()
+            b.paragraph("Live activity (tasks, subagents, tool calls) is followed for Claude Code sessions; for \(provider.name) this panel maps its setup.", style: .fg(Theme.faint, italic: true))
+        }
+
+        let todoLines = TasksSection(todos: store.todos).lines(width: width, maxRows: 10)
+        if !todoLines.isEmpty {
+            b.gap()
+            for line in todoLines { b.line(line) }
+        }
+
+        let running = store.runningSubagents
+        if !running.isEmpty {
+            b.header("WORKING FOR \(me.uppercased())", badge: "\(running.count)", color: Self.agentColor)
+            for subagent in running {
+                let look = CharacterLook(name: subagent.type)
+                let line = StyledLine("\(Theme.glyph(for: subagent.state.status)) ", .fg(Theme.color(for: subagent.state.status), bold: true))
+                    .appending(subagent.type, .fg(look.body, bold: true))
+                    .appending("  " + (subagent.state.action ?? subagent.description ?? ""), .fg(Theme.text))
+                b.item([line], route: .agent(subagent.type), accent: look.body)
+            }
+        }
+
+        b.header("\(me.uppercased())'S KIT", color: provider.color)
+        browseItem(&b, "◆", "Agents it can call", "\(config.agents.count)", Self.agentColor, .agents)
+        browseItem(&b, "✦", "Skills it can load", "\(config.skills.count)", Self.skillColor, .skills)
+        browseItem(&b, "↯", "MCP servers", "\(MCPSection.entries(snapshot).count)", Self.mcpColor, .mcpServers)
+
+        let usedSkills = store.skillUsage.values.sorted { $0.lastUsed > $1.lastUsed }
+        let usedMCP = store.mcpUsage.values.sorted { $0.lastUsed > $1.lastUsed }
+        if !usedSkills.isEmpty || !usedMCP.isEmpty {
+            b.header("USED THIS SESSION", color: Theme.muted)
+            for usage in usedSkills {
+                b.item([StyledLine("✦ ", .fg(Self.skillColor)).appending(usage.name, .fg(Theme.text)).trailing("×\(usage.count)", .fg(Self.skillColor))],
+                       route: .skill(usage.name), accent: Self.skillColor)
+            }
+            for usage in usedMCP {
+                b.item([StyledLine("↯ ", .fg(Self.mcpColor)).appending(usage.name, .fg(Theme.text)).trailing("×\(usage.count)", .fg(Self.mcpColor))],
+                       route: .mcpServer(usage.name), accent: Self.mcpColor)
+            }
+        }
+        if store.totalToolCalls > 0 {
+            b.gap()
+            b.line(StyledLine(" \(store.turns) turns · \(store.totalToolCalls) tool calls · \(store.subagents.count) subagents", .fg(Theme.faint)))
+        }
+    }
+
+    // MARK: - Search
+
+    private func search(_ b: inout PageBuilder) {
+        let cursor = Int(t * 2) % 2 == 0 ? "▌" : " "
+        b.gap()
+        b.line(StyledLine(" ⌕ ", .fg(Theme.cream, bold: true)).appending(query, .fg(Theme.cream, bold: true)).appending(cursor, .fg(Theme.claude)))
+        b.line(StyledLine(" type to filter agents, skills, plugins, MCP, commands", .fg(Theme.faint, italic: true)))
+        let words = query.lowercased().split(separator: " ")
+        guard !words.isEmpty else { return }
+
+        // Every word must appear in the name or description.
+        func matches(_ name: String, _ description: String?) -> Bool {
+            let haystack = name.lowercased() + " " + (description?.lowercased() ?? "")
+            return words.allSatisfy { haystack.contains($0) }
+        }
+        let agents = config.agents.filter { matches($0.qualifiedName, $0.description) }
+        let skills = config.skills.filter { matches($0.qualifiedName, $0.description) }
+        let plugins = config.plugins.filter { matches($0.name, $0.description) }
+        let servers = MCPSection.entries(snapshot).filter { matches($0.name, nil) }
+        let commands = config.commands.filter { matches($0.qualifiedName, $0.description) }
+
+        if !agents.isEmpty {
+            b.header("AGENTS", badge: "\(agents.count)", color: Self.agentColor)
+            for agent in agents { agentItem(&b, agent) }
+        }
+        if !skills.isEmpty {
+            b.header("SKILLS", badge: "\(skills.count)", color: Self.skillColor)
+            for skill in skills { skillItem(&b, skill) }
+        }
+        if !plugins.isEmpty {
+            b.header("PLUGINS", badge: "\(plugins.count)", color: Self.pluginColor)
+            for plugin in plugins { pluginLink(&b, plugin.name, header: false) }
+        }
+        if !servers.isEmpty {
+            b.header("MCP", badge: "\(servers.count)", color: Self.mcpColor)
+            for server in servers {
+                b.item([StyledLine("↯ ", .fg(Self.mcpColor)).appending(server.name, .fg(Theme.cream))], route: .mcpServer(server.name), accent: Self.mcpColor)
+            }
+        }
+        if !commands.isEmpty {
+            b.header("COMMANDS", badge: "\(commands.count)", color: Self.commandColor)
+            for command in commands {
+                b.item([StyledLine("/" + command.qualifiedName, .fg(Theme.cream))], route: .command(command.qualifiedName), accent: Self.commandColor)
+            }
+        }
+        if agents.isEmpty && skills.isEmpty && plugins.isEmpty && servers.isEmpty && commands.isEmpty {
+            b.gap()
+            b.line(StyledLine(" nothing matches \"\(query)\"", .fg(Theme.faint, italic: true)))
+        }
+    }
+
+    // MARK: - Shared rows
+
+    private func agentItem(_ b: inout PageBuilder, _ agent: AgentDefinition) {
+        let look = CharacterLook(name: agent.name)
+        let first = StyledLine("◆ ", .fg(look.body, bold: true)).appending(agent.name, .fg(Theme.cream, bold: true))
+            .trailing(agent.plugin ?? agent.scope.rawValue, .fg(Theme.faint))
+        b.item([first, StyledLine("  " + (agent.description ?? ""), .fg(Theme.faint))], route: .agent(agent.qualifiedName), accent: look.body)
+    }
+
+    private func pluginLink(_ b: inout PageBuilder, _ name: String, header: Bool = true) {
+        if header { b.header("FROM PLUGIN", color: Self.pluginColor) }
+        let description = config.plugins.first { $0.name == name }?.description
+        var lines = [StyledLine("▣ ", .fg(Self.pluginColor, bold: true)).appending(name, .fg(Theme.cream, bold: true)).trailing("→", .fg(Theme.faint))]
+        if let description { lines.append(StyledLine("  " + description, .fg(Theme.faint))) }
+        b.item(lines, route: .plugin(name), accent: Self.pluginColor)
+    }
+
+    private func missing(_ b: inout PageBuilder, _ kind: String, _ name: String) {
+        b.gap()
+        b.paragraph("No \(kind) named \"\(name)\" in the current configuration (it may come from a claude.ai connector or was removed).", style: .fg(Theme.faint, italic: true))
+    }
+
+    // MARK: - Lookups
+
+    private var claudeStatus: ActorStatus {
+        var status = store.main.status
+        if status.isBusy, let last = store.lastEventAt, snapshot.now.timeIntervalSince(last) > 600 { status = .idle }
+        if status == .thinking, !store.runningSubagents.isEmpty { status = .delegating }
+        return status
+    }
+
+    private var prompts: [String] {
+        store.log.filter { $0.kind == .prompt }.map(\.text)
+    }
+
+    private func findAgent(_ name: String) -> AgentDefinition? {
+        config.agents.first { $0.qualifiedName.caseInsensitiveCompare(name) == .orderedSame }
+            ?? config.agents.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    private func findSkill(_ name: String) -> SkillDefinition? {
+        config.skills.first { $0.qualifiedName.caseInsensitiveCompare(name) == .orderedSame }
+            ?? config.skills.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    private func runs(of agent: AgentDefinition) -> [Subagent] {
+        store.subagents.filter {
+            $0.type.caseInsensitiveCompare(agent.name) == .orderedSame || $0.type.caseInsensitiveCompare(agent.qualifiedName) == .orderedSame
+        }
+    }
+
+    private func runningSubagent(for agent: AgentDefinition) -> Subagent? {
+        runs(of: agent).last { $0.isRunning }
+    }
+
+    private func skillUsage(_ skill: SkillDefinition) -> CapabilityUsage? {
+        store.skillUsage[skill.qualifiedName] ?? store.skillUsage[skill.name]
+    }
+
+    private func abbreviated(_ path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
+    }
+}

@@ -1,3 +1,4 @@
+import AgentWorldKit
 import Foundation
 
 struct Options {
@@ -9,6 +10,9 @@ struct Options {
     var once = false
     var size: (columns: Int, rows: Int)?
     var fps = 12.0
+    var provider = Provider.claude
+    /// Run the hub's terminal picker instead of a sidebar.
+    var launcher = false
 
     static let usage = """
     agentworld-sidebar — a live, animated companion panel for Claude Code.
@@ -21,6 +25,9 @@ struct Options {
       --cwd PATH            Project directory to follow (default: current dir)
       --session-id UUID     Follow exactly this session (set by the wrapper)
       --projects-root PATH  Claude Code transcripts root (default: ~/.claude/projects)
+      --provider ID         Which CLI this sidebar maps: claude (default), codex,
+                            gemini, kimi, grok
+      --launcher            Run the hub's terminal picker (used by `agentworld`)
       --demo                Play a scripted session to show off every animation
       --once                Print one frame and exit (for scripts and tests)
       --size COLSxROWS      Frame size for --once (default: terminal size)
@@ -64,6 +71,12 @@ struct Options {
                 options.sessionId = try value(for: argument)
             case "--projects-root":
                 options.projectsRoot = URL(fileURLWithPath: (try value(for: argument) as NSString).expandingTildeInPath, isDirectory: true)
+            case "--provider":
+                let raw = try value(for: argument)
+                guard let provider = Provider.named(raw) else { throw ParseError.invalid(argument, raw) }
+                options.provider = provider
+            case "--launcher":
+                options.launcher = true
             case "--demo":
                 options.demo = true
             case "--once":

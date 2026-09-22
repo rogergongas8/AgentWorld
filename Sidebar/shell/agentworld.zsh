@@ -11,6 +11,8 @@
 #   AGENTWORLD_DISABLE=1   skip the sidebar entirely
 #   AGENTWORLD_WIDTH=34%   sidebar width (tmux size: percentage or columns)
 #   AGENTWORLD_FPS=12      animation frame rate
+#   AGENTWORLD_MOUSE=0     don't turn on tmux mouse mode (clicking a pane to
+#                          focus it, clicking/scrolling in the explorer)
 
 # Subcommands and flags that print and exit, or aren't the interactive TUI.
 typeset -ga _agentworld_passthrough_commands=(
@@ -100,6 +102,9 @@ claude() {
         return $?
     fi
     tmux set-option -t "$session_name" status off >/dev/null 2>&1
+    # Session-scoped: lets you click the sidebar to focus it and click or
+    # scroll inside the explorer. Other tmux sessions keep their setting.
+    [[ "${AGENTWORLD_MOUSE:-1}" != 0 ]] && tmux set-option -t "$session_name" mouse on >/dev/null 2>&1
     tmux split-window -t "$session_name" -h -d -l "$width" -c "$PWD" "${sidebar_env[@]}" "$sidebar_cmd" 2>/dev/null
     tmux attach-session -t "$session_name"
 }

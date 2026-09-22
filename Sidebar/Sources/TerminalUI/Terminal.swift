@@ -7,7 +7,29 @@ public enum Key: Equatable, Sendable {
     case backTab
     case enter
     case escape
+    case backspace
     case up, down, left, right
+    case pageUp, pageDown, home, end
+    /// A mouse event at a 0-based cell (only when mouse reporting is on).
+    case mouse(MouseEvent)
+}
+
+public struct MouseEvent: Equatable, Sendable {
+    public enum Action: Equatable, Sendable {
+        case press
+        case scrollUp
+        case scrollDown
+    }
+
+    public let action: Action
+    public let x: Int
+    public let y: Int
+
+    public init(action: Action, x: Int, y: Int) {
+        self.action = action
+        self.x = x
+        self.y = y
+    }
 }
 
 /// Thin wrapper over the controlling terminal: size, raw mode, alternate
@@ -43,8 +65,9 @@ public enum Terminal {
         isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1
     }
 
-    /// Alternate screen, hidden cursor, no echo / line buffering.
-    public static func enterFullscreen() {
+    /// Alternate screen, hidden cursor, no echo / line buffering, and
+    /// optionally mouse click/wheel reporting (SGR encoding).
+    public static func enterFullscreen(mouse: Bool = false) {
         if isatty(STDIN_FILENO) == 1 {
             var attributes = termios()
             tcgetattr(STDIN_FILENO, &attributes)
@@ -52,7 +75,7 @@ public enum Terminal {
             attributes.c_lflag &= ~tcflag_t(ECHO | ICANON)
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &attributes)
         }
-        write(ANSI.enterAltScreen + ANSI.hideCursor + ANSI.disableLineWrap + ANSI.clearScreen)
+        write(ANSI.enterAltScreen + ANSI.hideCursor + ANSI.disableLineWrap + ANSI.clearScreen + (mouse ? ANSI.enableMouse : ""))
     }
 
     public static func exitFullscreen() {
@@ -60,7 +83,7 @@ public enum Terminal {
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &attributes)
             savedAttributes = nil
         }
-        write(ANSI.reset + ANSI.enableLineWrap + ANSI.showCursor + ANSI.exitAltScreen)
+        write(ANSI.disableMouse + ANSI.reset + ANSI.enableLineWrap + ANSI.showCursor + ANSI.exitAltScreen)
     }
 
     /// Waits up to `timeout` for input and returns the keys read (possibly none).
@@ -87,20 +110,19 @@ public enum Terminal {
         var index = 0
         while index < bytes.count {
             let byte = bytes[index]
-            if byte == 0x1B, index + 2 < bytes.count, bytes[index + 1] == 0x5B {
-                switch bytes[index + 2] {
-                case 0x41: keys.append(.up)
-                case 0x42: keys.append(.down)
-                case 0x43: keys.append(.right)
-                case 0x44: keys.append(.left)
-                case 0x5A: keys.append(.backTab)
-                default: break
-                }
-                index += 3
+            if byte == 0x1B, index + 2 < bytes.count, bytes[index + 1] == 0x5B || bytes[index + 1] == 0x4F {
+                // CSI / SS3: read parameters up to the final byte.
+                var end = index + 2
+                while end < bytes.count, !(0x40...0x7E).contains(bytes[end]) { end += 1 }
+                guard end < bytes.count else { break }
+                let parameters = String(decoding: bytes[(index + 2)..<end], as: UTF8.self)
+                if let key = csiKey(final: bytes[end], parameters: parameters) { keys.append(key) }
+                index = end + 1
                 continue
             }
             switch byte {
             case 0x1B: keys.append(.escape)
+            case 0x7F, 0x08: keys.append(.backspace)
             case 0x09: keys.append(.tab)
             case 0x0A, 0x0D: keys.append(.enter)
             default:
@@ -109,6 +131,35 @@ public enum Terminal {
             index += 1
         }
         return keys
+    }
+
+    private static func csiKey(final: UInt8, parameters: String) -> Key? {
+        switch (final, parameters) {
+        case (0x41, _): return .up
+        case (0x42, _): return .down
+        case (0x43, _): return .right
+        case (0x44, _): return .left
+        case (0x5A, _): return .backTab
+        case (0x48, _): return .home
+        case (0x46, _): return .end
+        case (0x7E, "5"): return .pageUp
+        case (0x7E, "6"): return .pageDown
+        case (0x7E, "1"), (0x7E, "7"): return .home
+        case (0x7E, "4"), (0x7E, "8"): return .end
+        case (0x4D, _) where parameters.hasPrefix("<"):
+            // SGR mouse: ESC [ < button ; x ; y M  (release, `m`, is ignored).
+            let fields = parameters.dropFirst().split(separator: ";").compactMap { Int($0) }
+            guard fields.count == 3 else { return nil }
+            let action: MouseEvent.Action
+            switch fields[0] {
+            case 0: action = .press
+            case 64: action = .scrollUp
+            case 65: action = .scrollDown
+            default: return nil
+            }
+            return .mouse(MouseEvent(action: action, x: fields[1] - 1, y: fields[2] - 1))
+        default: return nil
+        }
     }
 
     private static func fdZero(_ set: inout fd_set) {

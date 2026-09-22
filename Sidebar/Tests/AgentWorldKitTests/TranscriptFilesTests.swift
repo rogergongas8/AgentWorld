@@ -106,10 +106,12 @@ import Testing
         try #"{"mcpServers":{"sentry":{"type":"http"}},"projects":{"\#(project.standardizedFileURL.path)":{"mcpServers":{"local-db":{"type":"stdio"}}}}}"#
             .write(to: home.appendingPathComponent(".claude.json"), atomically: true, encoding: .utf8)
 
-        let config = ClaudeConfigScanner(projectURL: project, homeURL: home).scan()
-        #expect(config.agents.map(\.name) == ["reviewer", "helper"])
+        let config = ProviderScanner(projectURL: project, homeURL: home).scan()
+        #expect(config.customAgents.map(\.name) == ["reviewer", "helper"])
         #expect(config.agents[0].scope == .project)
         #expect(config.agents[0].description == "Reviews code")
+        #expect(config.agents[0].tools == ["Read"])
+        #expect(config.agents.contains { $0.name == "Explore" && $0.scope == .builtin })
         #expect(config.skills.map(\.name) == ["lint"])
         #expect(config.mcpServers.map(\.name) == ["github", "local-db", "sentry"])
         #expect(config.mcpServers.map(\.scope) == [.project, .local, .user])
@@ -119,6 +121,59 @@ import Testing
     @Test func frontMatterRequiresFences() {
         #expect(FrontMatter.parse("name: x").isEmpty)
         #expect(FrontMatter.parse("---\nname: x\n").isEmpty)
-        #expect(FrontMatter.parse("---\nname: x\ndescription: >\n  long\n---")["description"] == nil)
+    }
+
+    @Test func frontMatterReadsBlocksAndLists() {
+        let meta = FrontMatter.parse("---\nname: x\ndescription: >\n  a long\n  text\ntools: Read, Grep\nskills:\n  - lint\n  - \"docs\"\n---\nbody")
+        #expect(meta["description"] == "a long text")
+        #expect(meta.list("tools") == ["Read", "Grep"])
+        #expect(meta.list("skills") == ["lint", "docs"])
+        #expect(FrontMatter.parse("---\ndescription: \"**MUST** use `x`\"\n---").description == "MUST use x")
+    }
+
+    @Test func scansPluginsAndCommands() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = root.appendingPathComponent("project", isDirectory: true)
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let fm = FileManager.default
+        let plugin = home.appendingPathComponent(".claude/plugins/synced/account/figma", isDirectory: true)
+        let disabled = home.appendingPathComponent("installs/off", isDirectory: true)
+        for directory in [
+            plugin.appendingPathComponent(".claude-plugin"), plugin.appendingPathComponent("skills/figma-use"),
+            plugin.appendingPathComponent("agents"), plugin.appendingPathComponent("commands"),
+            disabled.appendingPathComponent(".claude-plugin"), disabled.appendingPathComponent("skills/hidden"),
+            home.appendingPathComponent(".claude/commands/git"), project,
+        ] {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        try #"{"name":"figma","version":"2.0","author":{"name":"Figma"},"description":"Design"}"#
+            .write(to: plugin.appendingPathComponent(".claude-plugin/plugin.json"), atomically: true, encoding: .utf8)
+        try "---\ndescription: Use Figma\n---".write(to: plugin.appendingPathComponent("skills/figma-use/SKILL.md"), atomically: true, encoding: .utf8)
+        try "---\nname: designer\n---".write(to: plugin.appendingPathComponent("agents/designer.md"), atomically: true, encoding: .utf8)
+        try "---\ndescription: Sync\n---".write(to: plugin.appendingPathComponent("commands/sync.md"), atomically: true, encoding: .utf8)
+        try #"{"mcpServers":{"figma-mcp":{"type":"http"}}}"#.write(to: plugin.appendingPathComponent(".mcp.json"), atomically: true, encoding: .utf8)
+        try #"{"name":"off"}"#.write(to: disabled.appendingPathComponent(".claude-plugin/plugin.json"), atomically: true, encoding: .utf8)
+        try "---\n---".write(to: disabled.appendingPathComponent("skills/hidden/SKILL.md"), atomically: true, encoding: .utf8)
+        try #"{"plugins":{"off@market":[{"installPath":"\#(disabled.path)"}]}}"#
+            .write(to: home.appendingPathComponent(".claude/plugins/installed_plugins.json"), atomically: true, encoding: .utf8)
+        try #"{"enabledPlugins":{"off@market":false},"hooks":{"Stop":[]}}"#
+            .write(to: home.appendingPathComponent(".claude/settings.json"), atomically: true, encoding: .utf8)
+        try "hi".write(to: home.appendingPathComponent(".claude/commands/git/ship.md"), atomically: true, encoding: .utf8)
+        try "{}".write(to: project.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        try "# My App\n\nA tool.\n".write(to: project.appendingPathComponent("CLAUDE.md"), atomically: true, encoding: .utf8)
+
+        let config = ProviderScanner(projectURL: project, homeURL: home).scan()
+        #expect(config.plugins.map(\.name) == ["figma"])
+        #expect(config.plugins[0].author == "Figma")
+        #expect(config.plugins[0].mcpServers == ["figma-mcp"])
+        #expect(config.skills.map(\.qualifiedName) == ["figma:figma-use"])
+        #expect(config.customAgents.map(\.qualifiedName) == ["figma:designer"])
+        #expect(config.commands.map(\.qualifiedName).sorted() == ["figma:sync", "git:ship"])
+        #expect(config.mcpServers.map(\.name) == ["figma-mcp"])
+        #expect(config.repository.stacks == ["swift"])
+        #expect(config.repository.instructionsTitle == "My App")
+        #expect(config.repository.instructionsExcerpt == ["A tool."])
+        #expect(config.repository.hookEvents == ["Stop"])
     }
 }

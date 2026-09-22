@@ -8,10 +8,13 @@ struct SidebarSnapshot {
         case noProjectHistory
         case waitingForSession
         case following
+        /// A CLI whose sessions AgentWorld can't follow (yet): config only.
+        case configOnly
     }
 
+    let provider: Provider
     let store: SessionStore
-    let config: ClaudeConfiguration
+    let config: AgentConfiguration
     let connection: Connection
     let projectName: String
     let now: Date
@@ -39,11 +42,13 @@ struct HeaderSection: Section {
     func lines(width: Int, maxRows: Int) -> [StyledLine] {
         let now = snapshot.now
 
-        var title = StyledLine(" ◆ ", .fg(Theme.claude, bold: true))
-        title.append("AgentWorld ", .fg(Theme.cream, bold: true))
+        let provider = snapshot.provider
+        var title = StyledLine(" ◆ ", .fg(provider.color, bold: true))
+        title.append(provider.shortName + " ", .fg(Theme.cream, bold: true))
         title.append(snapshot.projectName, .fg(Theme.muted))
         let (pill, pillColor) = statusPill(now: now)
-        let lines = [title.trailing(pill, .fg(pillColor, bold: true)), metaLine(now: now), contextLine(width: width)]
+        var lines = [title.trailing(pill, .fg(pillColor, bold: true)), metaLine(now: now)]
+        if snapshot.connection != .configOnly { lines.append(contextLine(width: width)) }
         return Array(lines.prefix(maxRows))
     }
 
@@ -51,6 +56,8 @@ struct HeaderSection: Section {
         switch snapshot.connection {
         case .noProjectHistory, .waitingForSession:
             return ("○ WAITING ", Theme.faint)
+        case .configOnly:
+            return ("◇ EXPLORE ", Theme.muted)
         case .following:
             let store = snapshot.store
             if store.main.status.isBusy || !store.runningSubagents.isEmpty {
@@ -67,6 +74,10 @@ struct HeaderSection: Section {
         switch snapshot.connection {
         case .noProjectHistory:
             return StyledLine("   Start `claude` here to wake the world up", .fg(Theme.faint, italic: true))
+        case .configOnly:
+            var parts = [snapshot.provider.name]
+            if let model = snapshot.config.model { parts.append(model) }
+            return StyledLine("   " + parts.joined(separator: " · "), .fg(Theme.muted))
         case .waitingForSession:
             return StyledLine("   Waiting for the session transcript…", .fg(Theme.faint, italic: true))
         case .following:

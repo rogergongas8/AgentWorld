@@ -8,6 +8,9 @@ public enum ANSI {
     public static let disableLineWrap = "\u{1B}[?7l"
     public static let enableLineWrap = "\u{1B}[?7h"
     public static let clearScreen = "\u{1B}[2J"
+    /// Click + wheel reporting with SGR coordinates.
+    public static let enableMouse = "\u{1B}[?1000h\u{1B}[?1006h"
+    public static let disableMouse = "\u{1B}[?1006l\u{1B}[?1000l"
     public static let reset = "\u{1B}[0m"
     /// DEC mode 2026; ignored by terminals that don't support it.
     public static let beginSynchronizedUpdate = "\u{1B}[?2026h"
