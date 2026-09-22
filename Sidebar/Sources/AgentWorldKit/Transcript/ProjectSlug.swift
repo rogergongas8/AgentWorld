@@ -15,12 +15,17 @@ public enum ProjectSlug {
     /// The project's session directory, if it exists yet. There is deliberately
     /// no "most recent session anywhere" fallback: on a machine running several
     /// Claude Code sessions at once, that reliably locks onto an unrelated one.
-    /// Both the path as given and its symlink-resolved form are tried
-    /// (`/tmp/x` vs `/private/tmp/x`), since which one Claude Code saw
-    /// depends on how the shell reported its cwd.
+    /// Both the path as given and its `realpath` are tried (`/tmp/x` vs
+    /// `/private/tmp/x`), since which one Claude Code saw depends on how the
+    /// shell reported its cwd. (Foundation's `resolvingSymlinksInPath` can't
+    /// be used for this: it deliberately strips `/private`.)
     public static func sessionDirectory(forCwd cwd: String, projectsRoot: URL) -> URL? {
-        let resolved = URL(fileURLWithPath: cwd).resolvingSymlinksInPath().path
-        for path in [cwd, resolved] {
+        var candidates = [cwd]
+        if let resolved = realpath(cwd, nil) {
+            candidates.append(String(cString: resolved))
+            free(resolved)
+        }
+        for path in candidates {
             let candidate = projectsRoot.appendingPathComponent(slug(forCwd: path), isDirectory: true)
             var isDirectory: ObjCBool = false
             if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), isDirectory.boolValue {

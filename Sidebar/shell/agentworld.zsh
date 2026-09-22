@@ -78,20 +78,29 @@ claude() {
     # A dedicated, status-bar-less tmux session that disappears with claude.
     local session_name="agentworld-$$-$RANDOM"
     # A tmux server that's already running doesn't see this shell's
-    # environment; forward what claude and the sidebar need.
-    local -a env_args=()
+    # environment. Forward what claude needs through a private file that the
+    # pane sources and deletes (not tmux -e: that would put API keys on a
+    # command line, visible in `ps`).
+    local env_file
+    env_file=$(mktemp -t agentworld-env) || { "$real_claude" "$@"; return $? }
+    chmod 600 "$env_file"
     local name
-    for name in PATH COLORTERM TERM_PROGRAM LANG LC_ALL ${(k)parameters[(I)ANTHROPIC_*]} ${(k)parameters[(I)CLAUDE_*]} ${(k)parameters[(I)AWS_*]} ${(k)parameters[(I)AGENTWORLD_*]}; do
-        [[ -n "${(P)name}" ]] && env_args+=(-e "$name=${(P)name}")
+    for name in PATH COLORTERM TERM_PROGRAM LANG LC_ALL ${(k)parameters[(I)ANTHROPIC_*]} ${(k)parameters[(I)CLAUDE_*]} ${(k)parameters[(I)AWS_*]} ${(k)parameters[(I)GOOGLE_*]}; do
+        [[ -n "${(P)name}" ]] && print -r -- "export $name=${(qq)${(P)name}}" >> "$env_file"
+    done
+    local -a sidebar_env=()
+    for name in COLORTERM ${(k)parameters[(I)AGENTWORLD_*]}; do
+        [[ -n "${(P)name}" ]] && sidebar_env+=(-e "$name=${(P)name}")
     done
 
-    if ! tmux new-session -d -s "$session_name" -c "$PWD" "${env_args[@]}" \
-        "$claude_cmd; tmux kill-session -t ${(q)session_name}" 2>/dev/null; then
+    if ! tmux new-session -d -s "$session_name" -c "$PWD" \
+        ". ${(q)env_file}; rm -f ${(q)env_file}; $claude_cmd; tmux kill-session -t ${(q)session_name}" 2>/dev/null; then
+        rm -f "$env_file"
         "$real_claude" "$@"
         return $?
     fi
     tmux set-option -t "$session_name" status off >/dev/null 2>&1
-    tmux split-window -t "$session_name" -h -d -l "$width" -c "$PWD" "$sidebar_cmd" 2>/dev/null
+    tmux split-window -t "$session_name" -h -d -l "$width" -c "$PWD" "${sidebar_env[@]}" "$sidebar_cmd" 2>/dev/null
     tmux attach-session -t "$session_name"
 }
 

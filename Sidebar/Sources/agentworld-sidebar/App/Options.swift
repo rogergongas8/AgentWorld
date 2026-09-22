@@ -81,7 +81,9 @@ struct Options {
                 throw ParseError.unknown(argument)
             }
         }
-        options.cwd = URL(fileURLWithPath: (options.cwd as NSString).expandingTildeInPath).standardizedFileURL.path
+        // Not `standardizedFileURL`: it rewrites /private/tmp to /tmp, which
+        // changes the transcript directory name.
+        options.cwd = URL(fileURLWithPath: (options.cwd as NSString).expandingTildeInPath).path
         return options
     }
 }

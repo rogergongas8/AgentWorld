@@ -14,6 +14,16 @@ import Testing
         #expect(ProjectSlug.slug(forCwd: "/tmp/my.app_v2") == "-tmp-my-app-v2")
     }
 
+    @Test func sessionDirectoryResolvesPrivateTmp() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Claude Code saw the real path; the shell may report the /tmp alias.
+        let dir = root.appendingPathComponent(ProjectSlug.slug(forCwd: "/private/tmp"), isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        #expect(ProjectSlug.sessionDirectory(forCwd: "/tmp", projectsRoot: root) == dir)
+        #expect(ProjectSlug.sessionDirectory(forCwd: "/private/tmp", projectsRoot: root) == dir)
+    }
+
     @Test func tailerBuffersPartialLinesAndHandlesTruncation() throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
