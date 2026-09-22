@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Darwin
 import Foundation
@@ -119,7 +120,7 @@ final class SidebarApp {
             provider: demo == nil ? options.provider : .claude,
             store: feed.store,
             config: config,
-            connection: followsSessions ? feed.connection : .configOnly,
+            connection: followsSessions ? SidebarSnapshot.Connection(feed.connection) : .configOnly,
             projectName: projectName,
             cwd: demo?.projectURL.path ?? options.cwd,
             now: now

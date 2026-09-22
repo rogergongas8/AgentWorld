@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Foundation
 import TerminalUI

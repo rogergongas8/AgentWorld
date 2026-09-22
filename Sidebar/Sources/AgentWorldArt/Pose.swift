@@ -3,18 +3,18 @@ import Foundation
 import TerminalUI
 
 /// A character's body configuration for one frame, plus the props around it.
-struct Pose {
-    enum Arm {
+public struct Pose: Sendable {
+    public enum Arm: Sendable {
         case down, up, forward
     }
 
-    enum Eyes {
+    public enum Eyes: Sendable {
         case open(dx: Int, dy: Int)
         case closed
         case happy
     }
 
-    enum Prop {
+    public enum Prop: Sendable {
         case thoughtBubble(step: Int)
         case book(pageFlip: Bool)
         case sparkles(frame: Int)
@@ -25,27 +25,53 @@ struct Pose {
         case stars(frame: Int)
         case exclamation
         case question(blink: Bool)
+        // Flavors (see `Flavor`): what exactly the agent is doing.
+        case flask(frame: Int)
+        case branch(frame: Int)
+        case parcel(frame: Int)
+        case hammer(frame: Int)
+        case pencil(frame: Int)
+        case globe(frame: Int)
+        case plug(frame: Int)
+        case paperPlane(frame: Int)
+        case checklist(frame: Int)
+        case lightbulb(frame: Int)
+        case coffee(frame: Int)
+        /// Idle play: a ball bounced off the head.
+        case ball(frame: Int)
     }
 
-    var dx = 0
-    var dy = 0
-    var leftArm = Arm.down
-    var rightArm = Arm.down
-    var eyes = Eyes.open(dx: 0, dy: 0)
+    public var dx = 0
+    public var dy = 0
+    public var leftArm = Arm.down
+    public var rightArm = Arm.down
+    public var eyes = Eyes.open(dx: 0, dy: 0)
     /// Leg animation: nil = standing, otherwise alternates each step.
-    var step: Int?
+    public var step: Int?
     /// Blended over the whole figure (error flash).
-    var tint: RGB?
-    var props: [Prop] = []
+    public var tint: RGB?
+    public var props: [Prop] = []
+
+    public init(dx: Int = 0, dy: Int = 0, leftArm: Arm = .down, rightArm: Arm = .down, eyes: Eyes = .open(dx: 0, dy: 0),
+                step: Int? = nil, tint: RGB? = nil, props: [Prop] = []) {
+        self.dx = dx
+        self.dy = dy
+        self.leftArm = leftArm
+        self.rightArm = rightArm
+        self.eyes = eyes
+        self.step = step
+        self.tint = tint
+        self.props = props
+    }
 }
 
 /// Status → pose. Pure function of time so animation never drifts or piles
 /// up state; `t` is wall-clock seconds, `elapsed` is time in the status.
-enum Animator {
-    static let sleepAfter: TimeInterval = 120
-    static let celebrateFor: TimeInterval = 2.5
+public enum Animator {
+    public static let sleepAfter: TimeInterval = 120
+    public static let celebrateFor: TimeInterval = 2.5
 
-    static func pose(status: ActorStatus, elapsed: TimeInterval, t: TimeInterval, seed: Int, recentError: Bool) -> Pose {
+    public static func pose(status: ActorStatus, elapsed: TimeInterval, t: TimeInterval, seed: Int, recentError: Bool) -> Pose {
         let frame = Int(t * 10) + seed * 7
         var pose = Pose()
         let blinking = (Int(t * 10) + seed * 13) % 45 < 2
@@ -125,7 +151,7 @@ enum Animator {
     }
 
     /// A little jump with arms up and stars.
-    static func celebrate(elapsed: TimeInterval, frame: Int) -> Pose {
+    public static func celebrate(elapsed: TimeInterval, frame: Int) -> Pose {
         let hop = elapsed.truncatingRemainder(dividingBy: 0.8) / 0.8
         var pose = Pose()
         pose.dy = -Int((sin(hop * .pi) * 3).rounded())
@@ -136,7 +162,7 @@ enum Animator {
         return pose
     }
 
-    static func walking(frame: Int) -> Pose {
+    public static func walking(frame: Int) -> Pose {
         var pose = Pose()
         pose.step = (frame / 2) % 2
         pose.dy = pose.step == 0 ? 0 : -1

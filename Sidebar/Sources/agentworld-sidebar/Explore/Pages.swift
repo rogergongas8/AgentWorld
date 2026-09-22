@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Foundation
 import TerminalUI
@@ -52,28 +53,36 @@ struct Pages {
     // MARK: - Home
 
     private func home(_ b: inout PageBuilder) {
+        // A tip first: the one thing most worth using right now.
+        let fromPrompt = isLive && !prompts.isEmpty && !suggestions.isEmpty
+        let ideas = fromPrompt ? suggestions : repoSuggestions
+        if let tip = ideas.first {
+            b.header("✧ TIP", badge: fromPrompt ? "for what you asked" : "for this repo", color: Theme.warning)
+            suggestionRow(&b, tip, isTip: true)
+        }
+
         let working = store.runningSubagents.count
         b.header("YOUR CREW", badge: "\(config.agents.count) agents" + (working > 0 ? " · \(working) working" : ""), color: Self.agentColor)
-        b.gap()
-        // The CLI itself leads; one or two rows of agents after it, then "all agents".
-        let cardsPerRow = max(1, (width - 1) / (CharacterCard.width(for: .crew(CharacterLook.claude)) + 1))
-        let shown = Array(config.agents.prefix(max(2, cardsPerRow * 2 - 2)))
-        cardFlow(&b, claude: true, agents: shown)
-        if config.agents.count > shown.count {
+        leaderRow(&b)
+        // Busy agents first, then yours, then the built-ins.
+        let ordered = config.agents.sorted { lhs, rhs in
+            let l = runningSubagent(for: lhs) != nil, r = runningSubagent(for: rhs) != nil
+            if l != r { return l }
+            return (lhs.scope == .builtin ? 1 : 0) < (rhs.scope == .builtin ? 1 : 0)
+        }
+        for agent in ordered.prefix(5) { agentRow(&b, agent) }
+        if config.agents.count > 5 {
             b.item([StyledLine("◆ ", .fg(Self.agentColor)).appending("all \(config.agents.count) agents", .fg(Theme.text)).trailing("→", .fg(Theme.faint))],
                    route: .agents, accent: Self.agentColor)
         }
 
-        let fromPrompt = isLive && !prompts.isEmpty
-        b.header("USE NOW", badge: fromPrompt ? "for your last prompt" : "for this repo", color: Theme.warning)
-        let list = fromPrompt && !suggestions.isEmpty ? suggestions : repoSuggestions
-        if list.isEmpty, !isLive {
-            b.paragraph("Nothing in \(me)'s kit stands out for this repo's stack. Press / to search it.", style: .fg(Theme.faint, italic: true))
-        } else if list.isEmpty {
-            b.paragraph("Send \(me) a prompt and the agents and skills that fit it show up here.", style: .fg(Theme.faint, italic: true))
-        }
-        for suggestion in list {
-            suggestionItem(&b, suggestion)
+        if ideas.count > 1 {
+            b.header("MORE IDEAS", color: Theme.warning.darker(0.2))
+            for suggestion in ideas.dropFirst().prefix(3) { suggestionRow(&b, suggestion, isTip: false) }
+        } else if ideas.isEmpty {
+            b.gap()
+            b.paragraph(isLive ? "Tips appear here as you work: the agents and skills that fit what you ask \(me)." : "Press / to search \(me)'s kit.",
+                        style: .fg(Theme.faint, italic: true))
         }
 
         b.header("BROWSE", color: Theme.muted)
@@ -86,6 +95,82 @@ struct Pages {
         browseItem(&b, "⌂", "This repo", config.repository.stacks.prefix(2).joined(separator: " · "), Self.repoColor, .repository)
         browseItem(&b, "⌕", "Find anything", "/", Theme.cream, .search)
         browseItem(&b, "⊞", "Your CLIs", "Claude · Codex · Kimi…", Theme.live, .clis)
+    }
+
+    // MARK: - Compact rows (a small face + what it's for)
+
+    /// The CLI itself: who you're talking to on the left.
+    private func leaderRow(_ b: inout PageBuilder) {
+        let status = claudeStatus
+        let selected = b.nextIsSelected
+        let pose = isLive && status.isBusy
+            ? Animator.pose(status: status, elapsed: snapshot.now.timeIntervalSince(store.main.since), t: t, seed: 0, recentError: false)
+            : selected ? Animator.waving(t: t) : Animator.pose(status: .idle, elapsed: 0, t: t, seed: 0, recentError: false)
+        let model = store.context.model.map(Format.model) ?? config.model
+        let state = isLive
+            ? StyledLine("\(Theme.glyph(for: status)) " + (store.main.action ?? status.title), .fg(Theme.color(for: status)))
+            : StyledLine(provider.tagline, .fg(Theme.muted))
+        b.row(route: .leader, accent: provider.color,
+              pixels: Face.render(provider.figure, pose: pose, background: selected ? PageBuilder.selectionBackground : nil),
+              lines: [StyledLine(me, .fg(selected ? Theme.cream : provider.color, bold: true)).trailing(model ?? "", .fg(Theme.faint)),
+                      state,
+                      StyledLine("the one you talk to", .fg(Theme.faint))])
+    }
+
+    private func agentRow(_ b: inout PageBuilder, _ agent: AgentDefinition) {
+        let look = CharacterLook(name: agent.name)
+        let running = runningSubagent(for: agent)
+        let selected = b.nextIsSelected
+        let pose = running.map {
+            Animator.pose(status: $0.state.status, elapsed: snapshot.now.timeIntervalSince($0.state.since), t: t, seed: 1, recentError: false)
+        } ?? (selected ? Animator.waving(t: t) : Animator.pose(status: .idle, elapsed: 0, t: t, seed: agent.name.count, recentError: false))
+        let runs = runs(of: agent).count
+        let third: StyledLine
+        if let running {
+            third = StyledLine("● " + (running.state.action ?? running.description ?? "working"), .fg(Theme.live, bold: true))
+        } else if !agent.skills.isEmpty {
+            third = StyledLine("carries " + agent.skills.joined(separator: ", "), .fg(Self.skillColor.darker(0.2)))
+        } else {
+            third = StyledLine(runs > 0 ? "called ×\(runs) this session" : agent.scope == .builtin ? "built in" : agent.scope.rawValue, .fg(Theme.faint))
+        }
+        b.row(route: .agent(agent.qualifiedName), accent: look.readableColor,
+              pixels: Face.render(.crew(look), pose: pose, background: selected ? PageBuilder.selectionBackground : nil),
+              lines: [StyledLine(agent.name, .fg(selected ? Theme.cream : look.readableColor, bold: true)).trailing(agent.model ?? "", .fg(Theme.faint)),
+                      StyledLine(agent.description.map(SkillCategory.summarize) ?? "no description", .fg(Theme.muted)),
+                      third])
+    }
+
+    /// A suggestion with its picture and, for the tip, why it fits.
+    private func suggestionRow(_ b: inout PageBuilder, _ suggestion: Suggestion, isTip: Bool) {
+        let selected = b.nextIsSelected
+        let background = selected ? PageBuilder.selectionBackground : nil
+        let why = StyledLine("fits: " + suggestion.reasons.joined(separator: " · "), .fg(Theme.faint, italic: true))
+            .trailing(selected ? "u use" : "", .fg(Theme.warning))
+        switch suggestion.kind {
+        case .agent:
+            let agent = findAgent(suggestion.name)
+            let look = CharacterLook(name: agent?.name ?? suggestion.name)
+            b.row(route: .agent(suggestion.name), accent: look.readableColor,
+                  pixels: Face.render(.crew(look), pose: selected || isTip ? Animator.waving(t: t) : Pose(), background: background),
+                  lines: [StyledLine("Use ", .fg(Theme.muted)).appending(agent?.name ?? suggestion.name, .fg(look.readableColor, bold: true)).appending(" agent", .fg(Theme.muted)),
+                          StyledLine(agent?.description.map(SkillCategory.summarize) ?? "", .fg(Theme.text)),
+                          why])
+        case .skill:
+            let skill = findSkill(suggestion.name)
+            let color = Icon.color(for: skill?.name ?? suggestion.name)
+            b.row(route: .skill(suggestion.name), accent: color,
+                  pixels: Face.book(color: color, band: skill?.plugin != nil ? Bookshelf.pluginBand : Theme.cream, background: background, t: t),
+                  lines: [StyledLine("Use ", .fg(Theme.muted)).appending("/" + suggestion.name, .fg(color, bold: true)),
+                          StyledLine(skill?.summary ?? "", .fg(Theme.text)),
+                          why])
+        case .command:
+            let command = config.commands.first { $0.qualifiedName == suggestion.name }
+            b.row(route: .command(suggestion.name), accent: Self.commandColor,
+                  pixels: Face.terminal(background: background, t: t),
+                  lines: [StyledLine("Run ", .fg(Theme.muted)).appending("/" + suggestion.name, .fg(Self.commandColor, bold: true)),
+                          StyledLine(command?.description.map(SkillCategory.summarize) ?? "", .fg(Theme.text)),
+                          why])
+        }
     }
 
     // MARK: - CLIs
@@ -145,48 +230,6 @@ struct Pages {
 
     // MARK: - Character cards
 
-    /// The CLI itself (when `leader`) and then the agents, as character cards.
-    private func cardFlow(_ b: inout PageBuilder, claude leader: Bool, agents: [AgentDefinition]) {
-        var cards: [CardSpec] = []
-        if leader {
-            let status = claudeStatus
-            let since = store.main.since
-            let (now, t, isLive) = (snapshot.now, t, isLive)
-            cards.append(CardSpec(
-                figure: provider.figure,
-                name: me,
-                subtitle: isLive ? status.title.lowercased() : (config.model ?? "ready"),
-                subtitleColor: isLive ? Theme.color(for: status) : Theme.faint,
-                pose: { selected in
-                    selected && !status.isBusy
-                        ? Animator.waving(t: t)
-                        : Animator.pose(status: isLive ? status : .idle, elapsed: now.timeIntervalSince(since), t: t, seed: 0, recentError: false)
-                },
-                route: .leader
-            ))
-        }
-        for (index, agent) in agents.enumerated() {
-            let running = runningSubagent(for: agent)
-            let (now, t) = (snapshot.now, t)
-            let pose: (Bool) -> Pose = { selected in
-                if let running {
-                    return Animator.pose(status: running.state.status, elapsed: now.timeIntervalSince(running.state.since), t: t, seed: index + 1, recentError: false)
-                }
-                return selected ? Animator.waving(t: t) : Animator.pose(status: .idle, elapsed: 0, t: t, seed: index + 1, recentError: false)
-            }
-            cards.append(CardSpec(
-                figure: .crew(CharacterLook(name: agent.name)),
-                name: agent.name,
-                subtitle: running.map { "● " + $0.state.status.title.lowercased() } ?? agent.model ?? agent.plugin ?? agent.scope.rawValue,
-                subtitleColor: running == nil ? Theme.faint : Theme.live,
-                pose: pose,
-                route: .agent(agent.qualifiedName),
-                badges: agent.skills.map { Icon.color(for: findSkill($0)?.name ?? $0) }
-            ))
-        }
-        b.cards(cards)
-    }
-
     // MARK: - Lists
 
     private func agents(_ b: inout PageBuilder) {
@@ -198,8 +241,7 @@ struct Pages {
         ]
         for (title, agents) in groups where !agents.isEmpty {
             b.header(title, badge: "\(agents.count)", color: Self.agentColor)
-            b.gap()
-            cardFlow(&b, claude: false, agents: agents)
+            for agent in agents { agentRow(&b, agent) }
         }
         if config.customAgents.isEmpty {
             b.header("MAKE YOUR OWN", color: Theme.muted)
@@ -401,8 +443,7 @@ struct Pages {
         let agents = config.agents.filter { $0.plugin == plugin.name }
         if !agents.isEmpty {
             b.header("AGENTS", badge: "\(agents.count)", color: Self.agentColor)
-            b.gap()
-            cardFlow(&b, claude: false, agents: agents)
+            for agent in agents { agentRow(&b, agent) }
         }
         let skills = config.skills.filter { $0.plugin == plugin.name }
         if !skills.isEmpty {
@@ -619,6 +660,48 @@ struct Pages {
         if agents.isEmpty && skills.isEmpty && plugins.isEmpty && servers.isEmpty && commands.isEmpty {
             b.gap()
             b.line(StyledLine(" nothing matches \"\(query)\"", .fg(Theme.faint, italic: true)))
+        }
+    }
+
+    // MARK: - Info bar
+
+    /// What the highlighted (or hovered) thing is for, for the bar at the
+    /// bottom of the sidebar: a title and one sentence.
+    func info(for route: Route) -> (title: StyledLine, detail: String)? {
+        switch route {
+        case .leader:
+            return (StyledLine(provider.name, .fg(provider.color, bold: true)), "\(provider.tagline). ⏎ what it's doing and its kit")
+        case .agent(let name):
+            guard let agent = findAgent(name) else { return nil }
+            let look = CharacterLook(name: agent.name)
+            return (StyledLine("◆ " + agent.name, .fg(look.readableColor, bold: true)).appending(agent.model.map { "  " + $0 } ?? "", .fg(Theme.faint)),
+                    (agent.description.map(SkillCategory.summarize) ?? "An agent") + ". u use it · ⏎ details")
+        case .skill(let name):
+            guard let skill = findSkill(name) else { return nil }
+            return (StyledLine("✦ " + skill.name, .fg(Icon.color(for: skill.name), bold: true)).appending("  " + skill.category.title.lowercased(), .fg(Theme.faint)),
+                    (skill.summary ?? "A skill") + ". u use it · ⏎ details")
+        case .command(let name):
+            let command = config.commands.first { $0.qualifiedName == name }
+            return (StyledLine("/" + name, .fg(Self.commandColor, bold: true)), (command?.description.map(SkillCategory.summarize) ?? "A slash command") + ". u runs it")
+        case .mcpServer(let name):
+            return (StyledLine("↯ " + name, .fg(Self.mcpColor, bold: true)), "Gives \(me) tools from another service; \(me) calls them when a task needs it")
+        case .plugin(let name):
+            let plugin = config.plugins.first { $0.name == name }
+            return (StyledLine("▣ " + name, .fg(Self.pluginColor, bold: true)), plugin?.description ?? "A plugin")
+        case .summon(let text):
+            return (StyledLine("▶ types into \(me):", .fg(Theme.live, bold: true)), text + "…  (you finish the sentence)")
+        case .launch(let id):
+            guard let other = Provider.named(id) else { return nil }
+            return (StyledLine(other.name, .fg(other.color, bold: true)), other.tagline + (InstalledCLIs.path(for: other) == nil ? ". Not installed" : ""))
+        case .agents: return (StyledLine("Agents", .fg(Self.agentColor, bold: true)), "Helpers \(me) can hand work to, each with its own job, tools and model")
+        case .skills: return (StyledLine("Skills", .fg(Self.skillColor, bold: true)), "Know-how \(me) loads when a task needs it, on shelves by topic")
+        case .plugins: return (StyledLine("Plugins", .fg(Self.pluginColor, bold: true)), "Packs that add skills, agents, commands and MCP servers at once")
+        case .mcpServers: return (StyledLine("MCP servers", .fg(Self.mcpColor, bold: true)), "Connections to other services (Figma, Miro, databases…)")
+        case .commands: return (StyledLine("Commands", .fg(Self.commandColor, bold: true)), "Your own /shortcuts for prompts you use often")
+        case .repository: return (StyledLine("This repo", .fg(Self.repoColor, bold: true)), "What \(me) knows about this project, and what's set up just for it")
+        case .search: return (StyledLine("Find", .fg(Theme.cream, bold: true)), "Search every agent, skill, plugin and command by name or purpose")
+        case .clis: return (StyledLine("Your CLIs", .fg(Theme.live, bold: true)), "Claude, Codex, Gemini, Kimi… open another one side by side")
+        default: return nil
         }
     }
 

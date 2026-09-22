@@ -1,4 +1,4 @@
-.PHONY: build test demo install uninstall snapshot
+.PHONY: build test demo install uninstall snapshot app
 
 build:
 	swift build
@@ -19,3 +19,7 @@ install:
 
 uninstall:
 	./scripts/uninstall.sh
+
+# The macOS app, built, bundled and installed to ~/Applications.
+app:
+	./scripts/build-app.sh

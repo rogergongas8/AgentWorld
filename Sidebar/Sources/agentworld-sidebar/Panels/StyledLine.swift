@@ -1,3 +1,4 @@
+import AgentWorldArt
 import TerminalUI
 
 /// One row of styled text, built from segments. Panels produce these; the

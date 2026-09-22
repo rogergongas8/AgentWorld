@@ -11,6 +11,8 @@ import Testing
             == "A .pptx or .potx file is involved in any way")
         #expect(SkillCategory.summarize("Checklist for adding a CLI (e.g. opencode) to the hub. Use when…")
             == "Checklist for adding a CLI (e.g. opencode) to the hub")
+        #expect(SkillCategory.summarize("**MANDATORY** — you MUST invoke this BEFORE x. You MUST trigger this skill whenever the user wants to implement a Figma design as code. Example prompts are 'a'. This skill provides critical instructions.")
+            == "Implement a Figma design as code")
         let long = SkillCategory.summarize(String(repeating: "word ", count: 40))
         #expect(long.count <= 90 && long.hasSuffix("…"))
     }

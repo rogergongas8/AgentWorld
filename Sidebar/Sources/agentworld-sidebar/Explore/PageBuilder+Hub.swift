@@ -1,3 +1,4 @@
+import AgentWorldArt
 import TerminalUI
 
 /// A launcher button: the character's face, a title, a subtitle and a hint.

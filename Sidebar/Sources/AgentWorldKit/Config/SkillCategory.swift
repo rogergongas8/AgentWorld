@@ -76,7 +76,11 @@ public enum SkillCategory: String, CaseIterable, Sendable, Hashable {
     public static func summarize(_ description: String) -> String {
         let text = description.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
         let sentences = self.sentences(text).filter { $0.count > 3 }
-        let chosen = sentences.first { !isBoilerplate($0) } ?? sentences.first.map(stripTrigger) ?? text
+        // "…whenever the user wants to implement a Figma design as code" says
+        // what it's for better than "This skill provides instructions…".
+        let purpose = sentences.lazy.compactMap(userIntent).first
+        var chosen = sentences.first { !isBoilerplate($0) } ?? purpose ?? sentences.first.map(stripTrigger) ?? text
+        if let purpose, chosen.lowercased().hasPrefix("this skill") { chosen = purpose }
         var summary = stripTrigger(chosen)
         if let first = summary.first { summary = first.uppercased() + summary.dropFirst() }
         guard summary.count > 90 else { return summary }
@@ -110,7 +114,16 @@ public enum SkillCategory: String, CaseIterable, Sendable, Hashable {
     private static func isBoilerplate(_ sentence: String) -> Bool {
         let lower = sentence.lowercased()
         return ["mandatory", "use this skill", "use when", "use whenever", "trigger", "always use", "always invoke",
-                "you must", "load this skill", "invoke this skill", "do not use", "don't use", "never"].contains { lower.hasPrefix($0) }
+                "you must", "load this skill", "invoke this skill", "do not use", "don't use", "never",
+                "example", "for example", "e.g", "note:", "important"].contains { lower.hasPrefix($0) }
+    }
+
+    /// "…whenever the user wants to implement X" → "implement X".
+    private static func userIntent(_ sentence: String) -> String? {
+        let pattern = #"(?:whenever|when|if) the user (?:wants|asks|needs) to\s+"#
+        guard let range = sentence.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let rest = sentence[range.upperBound...].trimmingCharacters(in: .whitespaces)
+        return rest.count > 8 ? rest : nil
     }
 
     /// "Use this skill whenever the user wants to create a PDF" → "create a PDF".

@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Foundation
 import TerminalUI
@@ -28,6 +29,9 @@ final class Explorer {
     private var config = AgentConfiguration.empty
     /// Folder this sidebar maps, where new CLI tabs open.
     private var cwd = FileManager.default.currentDirectoryPath
+
+    /// Title and sentence for the bar at the bottom: the highlighted thing.
+    private(set) var info: (title: StyledLine, detail: String)?
 
     private var suggestionCache: (key: Int, config: AgentConfiguration, prompt: [Suggestion], repo: [Suggestion])?
 
@@ -64,6 +68,10 @@ final class Explorer {
         // The list shrank (config rescan, search): re-render with a valid selection.
         if focus.settle(on: page, rows: pageRows) { page = build() }
         lastPage = page
+        info = focus.selection < page.targets.count
+            ? Pages(snapshot: snapshot, suggestions: promptSuggestions, repoSuggestions: repoSuggestions, query: query, width: width, selection: -1)
+                .info(for: page.targets[focus.selection].route)
+            : nil
 
         canvas.blit(page.canvas, x: 0, y: pageTop, sourceY: focus.scroll, rows: pageRows)
         drawScrollbar(into: &canvas, x: width, top: pageTop, rows: pageRows, contentHeight: page.canvas.height, scroll: focus.scroll)
@@ -146,6 +154,11 @@ final class Explorer {
 
     private func handle(_ event: MouseEvent) {
         switch event.action {
+        case .move:
+            guard event.y >= pageTop, event.y < pageTop + pageRows,
+                  let index = Focus.hit(targets, x: event.x, y: event.y - pageTop + focus.scroll),
+                  index != focus.selection else { return }
+            focus.hover(index)
         case .scrollUp, .scrollDown:
             guard event.y >= pageTop else { return }
             focus.wheel(event.action == .scrollUp ? -1 : 1)

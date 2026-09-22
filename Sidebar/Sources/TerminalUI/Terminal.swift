@@ -19,6 +19,8 @@ public struct MouseEvent: Equatable, Sendable {
         case press
         case scrollUp
         case scrollDown
+        /// The pointer moved with no button held (hover).
+        case move
     }
 
     public let action: Action
@@ -153,6 +155,7 @@ public enum Terminal {
             let action: MouseEvent.Action
             switch fields[0] {
             case 0: action = .press
+            case 35: action = .move
             case 64: action = .scrollUp
             case 65: action = .scrollDown
             default: return nil

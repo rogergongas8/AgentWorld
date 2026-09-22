@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Foundation
 import TerminalUI
@@ -37,20 +38,6 @@ enum Bookshelf {
     /// Taller or shorter spines, stable per name, like a real shelf.
     static func height(for name: String) -> Int {
         7 + Int(CharacterLook.stableHash(name + "#h") % 4)
-    }
-}
-
-extension SkillCategory {
-    var color: RGB {
-        switch self {
-        case .design: RGB(hex: 0xF778BA)
-        case .documents: RGB(hex: 0x79C0FF)
-        case .code: RGB(hex: 0x7EE787)
-        case .integrations: RGB(hex: 0xBC8CFF)
-        case .data: RGB(hex: 0xFFA657)
-        case .workflow: RGB(hex: 0xE3B341)
-        case .other: Theme.muted
-        }
     }
 }
 

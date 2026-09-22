@@ -1,3 +1,4 @@
+import Foundation
 import AgentWorldKit
 import TerminalUI
 
@@ -6,7 +7,7 @@ import TerminalUI
 /// colors and headgear, no logos).
 extension Provider {
     /// "Claude", "Codex"…: the name used in sentences ("Ask Codex: …").
-    var shortName: String {
+    public var shortName: String {
         switch kind {
         case .claude: "Claude"
         case .codex: "Codex"
@@ -19,7 +20,7 @@ extension Provider {
         }
     }
 
-    var color: RGB {
+    public var color: RGB {
         switch kind {
         case .claude: Theme.claude
         case .codex: RGB(hex: 0x3FB68B)
@@ -32,7 +33,7 @@ extension Provider {
         }
     }
 
-    var figure: CharacterCard.Figure {
+    public var figure: CharacterFigure {
         switch kind {
         case .claude:
             .claude

@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Foundation
 
@@ -95,16 +96,16 @@ struct Workspace {
     }
 
     /// One CLI in a new window, with its AgentWorld sidebar on the right
-    /// (not for the plain terminal). `typing` is pre-filled into its prompt
+    /// (not for the plain terminal, nor for Agent-mode chats). `typing` is pre-filled into its prompt
     /// once it has started, without pressing enter. Returns the CLI's pane id.
     @discardableResult
-    func launch(_ launch: Launch, in directory: String, typing: String? = nil) throws -> String {
+    func launch(_ launch: Launch, in directory: String, typing: String? = nil, withSidebar: Bool = true) throws -> String {
         let (command, sessionId) = Self.command(for: launch)
         let pane = try tmux(["new-window", "-P", "-F", "#{pane_id}", "-n", windowName([launch], directory), "-c", directory] + env(launch) + [command])
             .trimmingCharacters(in: .whitespacesAndNewlines)
         tag(pane, launch, directory: directory, sessionId: sessionId)
 
-        if launch.profile.provider.isAgent {
+        if withSidebar, launch.profile.provider.isAgent {
             var arguments = ["--provider", launch.profile.provider.id, "--cwd", directory]
             if let sessionId { arguments += ["--session-id", sessionId] }
             let sidebar = ([sidebarBinary] + arguments).map(Self.shellQuote).joined(separator: " ")
@@ -216,6 +217,12 @@ struct Workspace {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try? process.run()
+    }
+
+    /// Tells the top bar which mode (Agent / Code) the hub shows.
+    func publishTab(_ name: String) {
+        _ = try? tmux(["set-option", "-g", "@aw_tab", name])
+        _ = try? tmux(["refresh-client", "-S"])
     }
 
     /// The hub's own window needs no title bar over its single pane.

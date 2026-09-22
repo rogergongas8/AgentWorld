@@ -1,3 +1,4 @@
+import AgentWorldArt
 import Foundation
 
 /// `--demo`: a throwaway project + transcript directory that a scripted,

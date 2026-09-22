@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Foundation
 import TerminalUI
@@ -58,7 +59,15 @@ struct SidebarView {
         let mode = snapshot.connection == .configOnly ? .explore : viewState.mode
         switch mode {
         case .explore:
-            explorer.render(into: &canvas, top: y, rows: height - y - footerRows, width: contentWidth, snapshot: snapshot)
+            // An info bar above the footer describes whatever is highlighted.
+            let infoRows = height >= 24 ? 3 : 0
+            explorer.render(into: &canvas, top: y, rows: height - y - footerRows - infoRows, width: contentWidth, snapshot: snapshot)
+            if infoRows > 0, let info = explorer.info {
+                let top = height - footerRows - infoRows
+                canvas.horizontalLine(y: top, from: 0, to: contentWidth, character: "─", style: .fg(Theme.rule))
+                info.title.draw(into: &canvas, x: 1, y: top + 1, width: contentWidth - 2)
+                StyledLine(info.detail.fitted(to: max(1, contentWidth - 2)), .fg(Theme.muted)).draw(into: &canvas, x: 1, y: top + 2, width: contentWidth - 2)
+            }
 
         case .live:
             if viewState.showsStage, height >= Self.minimumRowsForStage {

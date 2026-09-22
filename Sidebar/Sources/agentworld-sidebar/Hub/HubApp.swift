@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Darwin
 import Foundation
@@ -42,7 +43,6 @@ final class HubApp {
     private var recents: [String] = []
     private var kits: [String: (config: AgentConfiguration, at: Date)] = [:]
 
-    private var showsUninstalled = false
     /// Profiles ticked in "launch more than one" mode (nil: mode off).
     private var picked: Set<String>?
     private var pathInput: String?
@@ -55,7 +55,6 @@ final class HubApp {
     private var bodyTop = 2
     private var bodyRows = 0
     private var treeWidth = 30
-    private var tabRanges: [(Range<Int>, Tab)] = []
 
     private var nextPoll = Date.distantPast
     private var nextStatusPoll = Date.distantPast
@@ -77,6 +76,7 @@ final class HubApp {
         Terminal.enterFullscreen(mouse: true)
         defer { Terminal.exitFullscreen() }
         workspace.hideOwnTitleBar()
+        workspace.publishTab(tab == .agents ? "agents" : "code")
 
         let screen = Screen(colorMode: ColorMode.detect())
         let frameInterval = 1 / options.fps
@@ -137,7 +137,6 @@ final class HubApp {
     private func render(width: Int, height: Int, now: Date) -> Canvas {
         var canvas = Canvas(width: width, height: height)
         header(now: now).draw(into: &canvas, x: 0, y: 0, width: width)
-        drawTabs(into: &canvas, width: width)
         canvas.horizontalLine(y: 1, character: "─", style: .fg(Theme.rule))
 
         treeWidth = min(38, max(24, width / 4))
@@ -174,8 +173,14 @@ final class HubApp {
         return canvas
     }
 
+    /// The mode and what it's for; the Agent / Code switch itself is in the
+    /// tmux bar right above.
     private func header(now: Date) -> StyledLine {
-        let line = StyledLine(" ◆ ", .fg(Theme.claude, bold: true)).appending("AgentWorld", .fg(Theme.cream, bold: true))
+        let line = tab == .code
+            ? StyledLine(" CODE ", Style(fg: Theme.cream, bg: Theme.rule, bold: true))
+                .appending("  coding CLIs, each with its map of skills and tools", .fg(Theme.muted))
+            : StyledLine(" AGENT ", Style(fg: Theme.cream, bg: Theme.rule, bold: true))
+                .appending("  chat with one of your agents", .fg(Theme.muted))
         let lines = panes.map { status.line(for: $0, now: now) }
         let busy = lines.filter(\.isBusy).count
         let needsYou = lines.filter(\.needsYou).count
@@ -184,20 +189,6 @@ final class HubApp {
         if needsYou > 0 { parts.append("◐ \(needsYou) need\(needsYou == 1 ? "s" : "") you") }
         if parts.isEmpty { parts.append(panes.isEmpty ? "no terminals yet" : "\(panes.count) open") }
         return line.trailing(parts.joined(separator: "  ") + " ", .fg(needsYou > 0 ? Theme.warning : busy > 0 ? Theme.live : Theme.faint, bold: true))
-    }
-
-    private func drawTabs(into canvas: inout Canvas, width: Int) {
-        let labels = Tab.allCases.map { "  \($0.title)  " }
-        let total = labels.reduce(0) { $0 + $1.count } + labels.count - 1
-        var x = max(16, (width - total) / 2)
-        tabRanges = []
-        for (tab, label) in zip(Tab.allCases, labels) {
-            let selected = tab == self.tab
-            let style = selected ? Style(fg: Theme.cream, bg: Theme.rule, bold: true) : Style(fg: Theme.muted)
-            canvas.text(label, x: x, y: 0, style: style)
-            tabRanges.append((x..<(x + label.count), tab))
-            x += label.count + 1
-        }
     }
 
     private func footer(now: Date) -> StyledLine {
@@ -209,7 +200,7 @@ final class HubApp {
         if let notice, notice.until > now {
             return StyledLine(" " + notice.text, .fg(notice.color, bold: true))
         }
-        let other = tab == .code ? "a agents" : "c code"
+        let other = tab == .code ? "a agent mode" : "c code mode"
         return StyledLine(" ↑↓←→ move · ⏎ open · tab other side · \(other) · d folder · x close · 1-9 jump · q leave (all keeps running)", .fg(Theme.faint))
     }
 
@@ -330,9 +321,11 @@ final class HubApp {
             : "Tick the agents to open side by side (space), then launch them together.", .fg(Theme.muted)))
         b.gap()
 
+        // Every CLI is on show: the ones you don't have yet doze, and opening
+        // one tells you how to install it.
         let installed = profiles.filter { InstalledCLIs.path(forCommand: $0.executable) != nil }
         let missing = profiles.filter { InstalledCLIs.path(forCommand: $0.executable) == nil }
-        let shown = installed + (showsUninstalled ? missing : [])
+        let shown = installed + missing
         let t = now.timeIntervalSinceReferenceDate
         b.buttons(shown.enumerated().map { index, profile in
             let ready = InstalledCLIs.path(forCommand: profile.executable) != nil
@@ -356,10 +349,6 @@ final class HubApp {
         })
 
         b.gap()
-        if !missing.isEmpty {
-            b.item([StyledLine(showsUninstalled ? "▴ hide the \(missing.count) not installed" : "▾ \(missing.count) more not installed", .fg(Theme.muted))],
-                   route: .hubAction("more"), accent: Theme.muted)
-        }
         if let picked {
             b.item([StyledLine("▶ ", .fg(Theme.live, bold: true)).appending(picked.isEmpty ? "Pick some agents above (space)" : "Launch \(picked.count) together, side by side", .fg(Theme.cream, bold: true))],
                    route: .hubAction("go"), accent: Theme.live)
@@ -467,7 +456,7 @@ final class HubApp {
 
         b.header("PUT IT TO WORK", color: look.readableColor)
         b.item([StyledLine("▶ ", .fg(Theme.live, bold: true)).appending("Start a session with \(agent.name)", .fg(Theme.cream, bold: true))
-            .trailing("new \(provider.shortName) tab", .fg(Theme.faint))], route: .hubAction("start"), accent: Theme.live)
+            .trailing("chat in a new tab", .fg(Theme.faint))], route: .hubAction("start"), accent: Theme.live)
         for pane in panes where pane.provider == provider {
             b.item([StyledLine("↳ ", .fg(provider.color, bold: true)).appending("Hand it to \(pane.label) in \(pane.folderName)", .fg(Theme.text))
                 .trailing(status.line(for: pane, now: now).text, .fg(Theme.faint))], route: .hubAction("ask:" + pane.id), accent: provider.color)
@@ -514,8 +503,8 @@ final class HubApp {
             switch key {
             case .character("q"), .character("Q"):
                 if Workspace.isInsideTmux { workspace.detach() } else { return false }
-            case .character("a"): switchTab(.agents)
-            case .character("c"): switchTab(.code)
+            case .character("a"), .character("A"): switchTab(.agents)
+            case .character("c"), .character("C"): switchTab(.code)
             case .tab, .backTab: active = active == .tree ? .main : .tree
             case .up, .character("k"): withFocus { $0.move(vertical: -1, in: $1, rows: bodyRows) }
             case .down, .character("j"): withFocus { $0.move(vertical: 1, in: $1, rows: bodyRows) }
@@ -571,13 +560,17 @@ final class HubApp {
     }
 
     private func handle(_ event: MouseEvent) {
-        if event.y == 0, event.action == .press, let tab = tabRanges.first(where: { $0.0.contains(event.x) })?.1 {
-            switchTab(tab)
-            return
-        }
         guard event.y >= bodyTop, event.y < bodyTop + bodyRows else { return }
         let inTree = event.x < treeWidth
         switch event.action {
+        case .move:
+            // Hovering a button shows its details; the tree only changes on click.
+            guard !inTree, let targets = mainPage?.targets,
+                  let index = Focus.hit(targets, x: event.x - treeWidth - 2, y: event.y - bodyTop + mainFocus.scroll),
+                  index != mainFocus.selection else { return }
+            active = .main
+            mainFocus.hover(index)
+            mainRoute = targets[index].route
         case .scrollUp, .scrollDown:
             let direction = event.action == .scrollUp ? -1 : 1
             if inTree { treeFocus.wheel(direction) } else { mainFocus.wheel(direction) }
@@ -595,6 +588,7 @@ final class HubApp {
     private func switchTab(_ tab: Tab) {
         guard tab != self.tab else { return }
         self.tab = tab
+        workspace.publishTab(tab == .agents ? "agents" : "code")
         active = .tree
         treeFocus = Focus()
         mainFocus = Focus()
@@ -630,8 +624,6 @@ final class HubApp {
         let parts = action.split(separator: ":", maxSplits: 1).map(String.init)
         let argument = parts.count > 1 ? parts[1] : ""
         switch parts[0] {
-        case "more":
-            showsUninstalled.toggle()
         case "multi":
             picked = picked == nil ? [] : nil
         case "go":
@@ -707,7 +699,9 @@ final class HubApp {
             return
         }
         do {
-            try workspace.launch(.init(profile: profile, executable: executable), in: directory, typing: "Use the \(agent.qualifiedName) agent to ")
+            // Agent mode is a conversation: the CLI full width, no map beside it.
+            try workspace.launch(.init(profile: profile, executable: executable), in: directory,
+                                 typing: "Use the \(agent.qualifiedName) agent to ", withSidebar: false)
             RecentFolders.remember(directory)
             nextPoll = .distantPast
         } catch {
@@ -746,6 +740,11 @@ final class HubApp {
     private func handlePathInput(_ key: Key) {
         guard var input = pathInput else { return }
         switch key {
+        // The top bar's Agent / Code clicks arrive as A / C: leave typing.
+        case .character("A"), .character("C"):
+            pathInput = nil
+            switchTab(key == .character("A") ? .agents : .code)
+            return
         case .character(let character): input.append(character)
         case .backspace: if !input.isEmpty { input.removeLast() }
         case .tab: input = Self.complete(input)
@@ -820,8 +819,3 @@ final class HubApp {
     }
 }
 
-extension CharacterLook {
-    /// The look's color for text: its body, or its accent when the outfit is
-    /// too dark to read on the dark background.
-    var readableColor: RGB { body.luminance < 0.3 ? accent : body }
-}

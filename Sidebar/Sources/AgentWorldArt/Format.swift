@@ -1,7 +1,9 @@
+import AgentWorldKit
+import TerminalUI
 import Foundation
 
-enum Format {
-    static func duration(_ seconds: TimeInterval) -> String {
+public enum Format {
+    public static func duration(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
         if total < 60 { return "\(total)s" }
         if total < 3600 { return "\(total / 60)m" }
@@ -9,7 +11,7 @@ enum Format {
         return "\(total / 3600)h\(String(format: "%02d", (total % 3600) / 60))"
     }
 
-    static func tokens(_ count: Int) -> String {
+    public static func tokens(_ count: Int) -> String {
         switch count {
         case ..<1000: "\(count)"
         case ..<10_000: String(format: "%.1fk", Double(count) / 1000)
@@ -18,12 +20,12 @@ enum Format {
         }
     }
 
-    static func clock(_ date: Date) -> String {
+    public static func clock(_ date: Date) -> String {
         timeFormatter.string(from: date)
     }
 
     /// `claude-opus-5-5` → `opus-5-5`, `claude-sonnet-5-20260101` → `sonnet-5`.
-    static func model(_ model: String) -> String {
+    public static func model(_ model: String) -> String {
         var name = model.hasPrefix("claude-") ? String(model.dropFirst("claude-".count)) : model
         if let range = name.range(of: #"-\d{8}$"#, options: .regularExpression) {
             name.removeSubrange(range)
@@ -32,7 +34,7 @@ enum Format {
     }
 
     /// Smooth horizontal bar using eighth blocks.
-    static func bar(fraction: Double, width: Int) -> (filled: String, empty: String) {
+    public static func bar(fraction: Double, width: Int) -> (filled: String, empty: String) {
         guard width > 0 else { return ("", "") }
         let eighths = Int((min(max(fraction, 0), 1) * Double(width * 8)).rounded())
         let partials: [Character] = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"].map { $0.first ?? " " }

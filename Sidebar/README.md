@@ -4,17 +4,41 @@ Your agent CLIs (Claude Code, Codex, Gemini CLI, Kimi CLI, Grok…) side by
 side in one terminal, each with a visual, navigable map of its agents,
 skills, plugins and MCP servers.
 
-## The hub: `agentworld`
+## The app: AgentWorld.app
 
-Run `agentworld` in any folder. It's a terminal app with two tabs, like a
-desktop agent manager but 100% CLI:
+The main way to use AgentWorld: a macOS app with a terminal soul.
+
+- **Code**: workspaces (folders) on the left with their sessions and live
+  status; tabs with ✕ and **+** across the top; "Start coding in <folder>"
+  with a card per CLI (Claude Code, Codex, Gemini, Kimi, Grok, OpenCode,
+  Cursor Agent, a plain Terminal, your profiles): each opens a **real
+  terminal** in the window (SwiftTerm), and "Launch more than one…" tiles
+  several. On the right, a **tip** for what you're doing and the CLI's
+  agents, skills (by topic) and MCP servers: hover for what they do, click
+  to hand one to the terminal ("Use the ui-reviewer agent to ▌").
+- **Agent**: your agents as characters; each has a page (what it does, the
+  skills it carries, its tools) and **Start a chat**: a full-width
+  conversation with it.
+
+Build and install it with `make app` (or `./scripts/build-app.sh`), then open
+**AgentWorld** from Spotlight/Launchpad, or `agentworld app` from a terminal
+to open it on that folder. It reads your login shell's environment, so the
+CLIs are found even when opened from the Dock. Needs macOS 13+.
+
+## The terminal hub: `agentworld`
+
+Run `agentworld` in any folder. It's a terminal app with two modes, like a
+desktop agent manager but 100% CLI. A bar across the top is always there:
+`◆ AgentWorld  [ Agent | Code ]  1 Claude · repo  2 Codex · repo  ＋ new`, all
+clickable (or `Ctrl-b a` / `Ctrl-b c`).
 
 - **Code**: on the left, your **workspaces** (folders) with the terminals
   open in each, nested underneath, with live status: what a Claude session
   is doing right now ("Edit Stage.swift", "your turn", "idle 3m"), or tmux
   activity for other CLIs. On the right, **Start coding in <folder>**: a
   button per CLI with its character's face (Claude Code, Codex, Gemini, Kimi,
-  Grok, OpenCode, Cursor Agent, a plain Terminal, and your saved profiles).
+  Grok, OpenCode, Cursor Agent, a plain Terminal, and your saved profiles);
+  the ones you don't have yet doze, and opening one shows how to install it.
   One opens as a new tab with the CLI on the left and its AgentWorld map on
   the right; **Launch more than one…** lets you tick several (space) and
   opens them **tiled side by side** in one tab, each pane with a title bar.
@@ -24,11 +48,11 @@ desktop agent manager but 100% CLI:
 - **Agents**: every agent across your CLIs as a character, with what it's
   doing ("working in AgentWorld: Read Stage.swift", "done 4m ago") or what
   it's for. Its page shows who powers it, the skills it carries (on a
-  shelf), its tools, and **Start a session with it** (a new tab with
-  "Use the X agent to " already typed) or **Hand it to** a running session.
+  shelf), its tools, and **Start a session with it**: a chat, full width
+  with no sidebar, with "Use the X agent to " already typed. **Hand it to**
+  gives it to a session that's already running.
 
-Tabs along the very top (click them, or `a` / `c`); `tab` moves between the
-tree and the main area, arrows move inside, `⏎` opens, `d` opens a folder
+`tab` moves between the tree and the main area, arrows move inside, `⏎` opens, `d` opens a folder
 (tab completes), `1`–`9` jump to a terminal, `x` twice closes one, `q` leaves
 with everything still running. In any terminal, `Ctrl-b h` brings you back to
 the hub, and clicking a tab at the top switches.
@@ -78,12 +102,14 @@ the left and AgentWorld on the right, split with tmux (no status bar, so it
 feels like one terminal). It doesn't repeat the chat: it shows who and what
 you can work with, and what fits the task in front of you.
 
-**1 explore** (the default view) is a little world you can walk around:
+**1 explore** (the default view) is a little world you can walk around. At
+the top a **✧ TIP** suggests the agent, skill or command that fits what you
+just asked; at the bottom an info bar says what the highlighted (or hovered)
+thing is for.
 
-- **Your crew**: every agent is a pixel character on a card: Claude, the
-  built-in agents (Explore, Plan, general-purpose), and your own and your
-  plugins' agents. Cards come alive when that agent is working right now
-  ("● browsing"). Open one to see what it does, its tools, the skills it
+- **Your crew**: every agent as a row: a small pixel face, its name and
+  model, what it's for, and the skills it carries or what it's doing right
+  now ("● Read Stage.swift"). Open one to see what it does, its tools, the skills it
   carries, its runs this session and how to call it.
 - **Use now**: agents, skills and commands that fit your last prompt (English
   or Spanish), the files being touched, or, before the first prompt, this

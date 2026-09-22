@@ -113,9 +113,17 @@ claude() {
 # Gemini, Kimi, Grok…), each with its AgentWorld sidebar, plus a picker to
 # start and switch between them. It runs on its own tmux server, so the
 # terminals keep running when you close the window: `agentworld` again brings
-# them back. With arguments it runs the sidebar directly instead
-# (`agentworld --demo`, `agentworld --provider codex`, `agentworld --help`).
+# them back. `agentworld app` opens the macOS app on this folder instead.
+# With other arguments it runs the sidebar directly (`agentworld --demo`,
+# `agentworld --provider codex`, `agentworld --help`).
 agentworld() {
+    # `agentworld app`: the macOS app, opened on this folder.
+    if [[ "$1" == app ]]; then
+        local bundle=~/Applications/AgentWorld.app
+        [[ -d "$bundle" ]] || { print -u2 "agentworld: the app isn't installed (Sidebar: make app)"; return 1 }
+        open -a "$bundle" --args --cwd "$PWD"
+        return
+    fi
     local sidebar_bin
     sidebar_bin=$(whence -p agentworld-sidebar) || { print -u2 "agentworld: agentworld-sidebar not installed"; return 127 }
     if (( $# )); then

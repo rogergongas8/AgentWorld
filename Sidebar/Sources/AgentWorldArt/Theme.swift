@@ -1,20 +1,21 @@
+import Foundation
 import AgentWorldKit
 import TerminalUI
 
 /// Every color and glyph the sidebar uses, in one place.
-enum Theme {
-    static let claude = RGB(hex: 0xD97757)
-    static let cream = RGB(hex: 0xF0E6D2)
-    static let text = RGB(hex: 0xD6D6D6)
-    static let muted = RGB(hex: 0x8B949E)
-    static let faint = RGB(hex: 0x5C6370)
-    static let rule = RGB(hex: 0x3B4048)
-    static let live = RGB(hex: 0x56D364)
-    static let warning = RGB(hex: 0xE3B341)
-    static let error = RGB(hex: 0xFF7B72)
-    static let barEmpty = RGB(hex: 0x30363D)
+public enum Theme {
+    public static let claude = RGB(hex: 0xD97757)
+    public static let cream = RGB(hex: 0xF0E6D2)
+    public static let text = RGB(hex: 0xD6D6D6)
+    public static let muted = RGB(hex: 0x8B949E)
+    public static let faint = RGB(hex: 0x5C6370)
+    public static let rule = RGB(hex: 0x3B4048)
+    public static let live = RGB(hex: 0x56D364)
+    public static let warning = RGB(hex: 0xE3B341)
+    public static let error = RGB(hex: 0xFF7B72)
+    public static let barEmpty = RGB(hex: 0x30363D)
 
-    static func color(for kind: ToolKind) -> RGB {
+    public static func color(for kind: ToolKind) -> RGB {
         switch kind {
         case .read: RGB(hex: 0x6CB6FF)
         case .search: RGB(hex: 0x56D4DD)
@@ -31,7 +32,7 @@ enum Theme {
         }
     }
 
-    static func glyph(for kind: ToolKind) -> Character {
+    public static func glyph(for kind: ToolKind) -> Character {
         switch kind {
         case .read: "▤"
         case .search: "◎"
@@ -48,7 +49,7 @@ enum Theme {
         }
     }
 
-    static func color(for status: ActorStatus) -> RGB {
+    public static func color(for status: ActorStatus) -> RGB {
         switch status {
         case .idle: muted
         case .thinking: RGB(hex: 0xD2A8FF)
@@ -64,7 +65,7 @@ enum Theme {
         }
     }
 
-    static func glyph(for status: ActorStatus) -> Character {
+    public static func glyph(for status: ActorStatus) -> Character {
         switch status {
         case .idle: "·"
         case .thinking: "◌"

@@ -1,3 +1,4 @@
+import AgentWorldArt
 import TerminalUI
 
 /// A rectangle on a page that can be selected and opened.

@@ -1,30 +1,32 @@
+import Foundation
+import AgentWorldKit
 import TerminalUI
 
 /// How a crew member (subagent) looks. Derived deterministically from its
 /// type name, so the same subagent always shows up as the same character.
-struct CharacterLook {
-    enum Headgear: CaseIterable {
+public struct CharacterLook: Sendable, Hashable {
+    public enum Headgear: CaseIterable, Sendable, Hashable {
         case antenna, cap, crown, headphones, bare, horns
     }
 
-    enum Face: CaseIterable {
+    public enum Face: CaseIterable, Sendable, Hashable {
         case skin, visor
     }
 
-    let body: RGB
-    let hair: RGB
-    let skin: RGB
-    let accent: RGB
-    let headgear: Headgear
-    let face: Face
+    public let body: RGB
+    public let hair: RGB
+    public let skin: RGB
+    public let accent: RGB
+    public let headgear: Headgear
+    public let face: Face
 
     /// Claude's own orange; subagents use the rest of the wheel.
-    static let claude = CharacterLook(
+    public static let claude = CharacterLook(
         body: Theme.claude, hair: Theme.claude, skin: Theme.claude,
         accent: Theme.cream, headgear: .bare, face: .skin
     )
 
-    init(body: RGB, hair: RGB, skin: RGB, accent: RGB, headgear: Headgear, face: Face) {
+    public init(body: RGB, hair: RGB, skin: RGB, accent: RGB, headgear: Headgear, face: Face) {
         self.body = body
         self.hair = hair
         self.skin = skin
@@ -33,7 +35,7 @@ struct CharacterLook {
         self.face = face
     }
 
-    init(name: String) {
+    public init(name: String) {
         // Mixed so similar names ("ui-reviewer", "sidebar-tester") still differ.
         let hash = Self.mixed(Self.stableHash(name.lowercased()))
         // Skip the orange band (~0.03-0.1) so nobody is mistaken for Claude.
@@ -48,7 +50,7 @@ struct CharacterLook {
     }
 
     /// SplitMix64 finalizer: spreads FNV's weak low bits across the word.
-    static func mixed(_ value: UInt64) -> UInt64 {
+    public static func mixed(_ value: UInt64) -> UInt64 {
         var z = value &+ 0x9E3779B97F4A7C15
         z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
         z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
@@ -56,7 +58,7 @@ struct CharacterLook {
     }
 
     /// FNV-1a: stable across runs, unlike `Hasher`.
-    static func stableHash(_ string: String) -> UInt64 {
+    public static func stableHash(_ string: String) -> UInt64 {
         var hash: UInt64 = 0xcbf29ce484222325
         for byte in string.utf8 {
             hash ^= UInt64(byte)

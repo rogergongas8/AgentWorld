@@ -1,3 +1,4 @@
+import AgentWorldArt
 import TerminalUI
 
 /// Selection and scroll over a page's targets: 2D arrow-key movement (for
@@ -60,6 +61,12 @@ struct Focus {
     mutating func wheel(_ direction: Int) {
         followsSelection = false
         scroll += direction * 3
+    }
+
+    /// The pointer is over a target: highlight it without scrolling.
+    mutating func hover(_ index: Int) {
+        selection = index
+        followsSelection = false
     }
 
     mutating func select(_ index: Int) {

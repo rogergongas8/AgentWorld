@@ -1,3 +1,4 @@
+import AgentWorldArt
 import AgentWorldKit
 import Foundation
 import TerminalUI
@@ -10,6 +11,14 @@ struct SidebarSnapshot {
         case following
         /// A CLI whose sessions AgentWorld can't follow (yet): config only.
         case configOnly
+
+        init(_ connection: SessionFeed.Connection) {
+            switch connection {
+            case .noProjectHistory: self = .noProjectHistory
+            case .waitingForSession: self = .waitingForSession
+            case .following: self = .following
+            }
+        }
     }
 
     let provider: Provider

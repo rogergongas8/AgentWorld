@@ -1,30 +1,32 @@
+import Foundation
+import AgentWorldKit
 import TerminalUI
 
 /// The rectangle a drawn figure occupies, used to place props around it.
-struct Figure {
-    let x: Int
-    let top: Int
-    let width: Int
-    let height: Int
+public struct Figure: Sendable {
+    public let x: Int
+    public let top: Int
+    public let width: Int
+    public let height: Int
 
-    var right: Int { x + width }
-    var bottom: Int { top + height }
-    var centerX: Int { x + width / 2 }
+    public var right: Int { x + width }
+    public var bottom: Int { top + height }
+    public var centerX: Int { x + width / 2 }
 }
 
 /// Procedural pixel art for the two character families: Claude (an orange
 /// block creature with slit eyes and four little legs) and the crew members
 /// that represent subagents (small humanoids with varied headgear).
-enum CharacterPainter {
-    static let claudeSize = (width: 16, height: 10)
-    static let crewSize = (width: 10, height: 13)
+public enum CharacterPainter {
+    public static let claudeSize = (width: 16, height: 10)
+    public static let crewSize = (width: 10, height: 13)
 
     private static let eyeColor = RGB(hex: 0x1B1B1F)
 
     // MARK: - Claude
 
     @discardableResult
-    static func drawClaude(on canvas: inout PixelCanvas, x originX: Int, ground: Int, pose: Pose) -> Figure {
+    public static func drawClaude(on canvas: inout PixelCanvas, x originX: Int, ground: Int, pose: Pose) -> Figure {
         let x = originX + pose.dx
         let top = ground - claudeSize.height + pose.dy
         let base = tinted(Theme.claude, pose.tint)
@@ -55,7 +57,7 @@ enum CharacterPainter {
     // MARK: - Crew
 
     @discardableResult
-    static func drawCrew(on canvas: inout PixelCanvas, look: CharacterLook, x originX: Int, ground: Int, pose: Pose) -> Figure {
+    public static func drawCrew(on canvas: inout PixelCanvas, look: CharacterLook, x originX: Int, ground: Int, pose: Pose) -> Figure {
         let x = originX + pose.dx
         let top = ground - crewSize.height + pose.dy
         let body = tinted(look.body, pose.tint)
@@ -247,6 +249,9 @@ enum CharacterPainter {
                 canvas[x + 2, y + 1] = color
                 canvas[x + 1, y + 2] = color
                 canvas[x + 1, y + 4] = color
+
+            case .flask, .branch, .parcel, .hammer, .pencil, .globe, .plug, .paperPlane, .checklist, .lightbulb, .coffee, .ball:
+                drawFlavorProp(prop, on: &canvas, around: figure)
             }
         }
     }
@@ -263,7 +268,7 @@ enum CharacterPainter {
     }
 
     /// Cheap deterministic pseudo-random (no global RNG state between frames).
-    static func scramble(_ value: Int) -> Int {
+    public static func scramble(_ value: Int) -> Int {
         var x = UInt32(truncatingIfNeeded: value &* 2654435761)
         x ^= x >> 15
         x = x &* 2246822519
