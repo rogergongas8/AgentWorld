@@ -90,13 +90,6 @@ public enum Icon {
     }
 }
 
-extension RGB {
-    /// Perceived brightness, 0…1.
-    public var luminance: Double {
-        (0.2126 * Double(r) + 0.7152 * Double(g) + 0.0722 * Double(b)) / 255
-    }
-}
-
 extension Animator {
     /// A friendly wave for the selected character.
     public static func waving(t: TimeInterval) -> Pose {

@@ -11,6 +11,11 @@ public struct RGB: Hashable, Sendable {
         self.b = b
     }
 
+    /// Perceived brightness, 0…1.
+    public var luminance: Double {
+        (0.2126 * Double(r) + 0.7152 * Double(g) + 0.0722 * Double(b)) / 255
+    }
+
     /// `0xRRGGBB`.
     public init(hex: UInt32) {
         self.init(UInt8((hex >> 16) & 0xFF), UInt8((hex >> 8) & 0xFF), UInt8(hex & 0xFF))

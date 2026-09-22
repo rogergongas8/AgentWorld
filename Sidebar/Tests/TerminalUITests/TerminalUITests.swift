@@ -14,13 +14,37 @@ import Testing
         pixels.render(into: &canvas, column: 0, row: 0)
         #expect(canvas[0, 0] == Cell("▀", Style(fg: red)))
         #expect(canvas[1, 0] == Cell("▄", Style(fg: blue)))
-        #expect(canvas[2, 0] == Cell("▀", Style(fg: red, bg: blue)))
+        // Two colors, no neighbors: the lighter one (red) is the background.
+        #expect(canvas[2, 0] == Cell("▄", Style(fg: blue, bg: red)))
 
         var solid = PixelCanvas(width: 1, height: 2)
         solid[0, 0] = red
         solid[0, 1] = red
         solid.render(into: &canvas, column: 0, row: 0)
         #expect(canvas[0, 0] == Cell(" ", Style(bg: red)))
+    }
+
+    /// Warp's line spacing shows each cell's background as a seam: it must
+    /// match the pixel it touches, never draw a dark line through the art.
+    @Test func twoColorCellsHideLineSpacingSeams() {
+        let skin = RGB(240, 200, 160), eye = RGB(20, 20, 30)
+        // Skin above, then a cell with skin on top of an eye: `▄` keeps the
+        // seam at its foot, but the pixel below is skin too, so the seam
+        // (skin) blends in; `▀` would put a dark stripe across the face.
+        var face = PixelCanvas(width: 1, height: 6)
+        face[0, 0] = skin; face[0, 1] = skin
+        face[0, 2] = skin; face[0, 3] = eye
+        face[0, 4] = skin; face[0, 5] = skin
+        var canvas = Canvas(width: 1, height: 3)
+        face.render(into: &canvas, column: 0, row: 0)
+        #expect(canvas[0, 1] == Cell("▄", Style(fg: eye, bg: skin)))
+
+        // Eye pixel above: `▀` puts the (eye-colored) seam against the eye.
+        var brow = PixelCanvas(width: 1, height: 4)
+        brow[0, 1] = eye
+        brow[0, 2] = skin; brow[0, 3] = eye
+        brow.render(into: &canvas, column: 0, row: 0)
+        #expect(canvas[0, 1] == Cell("▀", Style(fg: skin, bg: eye)))
     }
 
     @Test func pixelCanvasClipsAndRoundsHeight() {

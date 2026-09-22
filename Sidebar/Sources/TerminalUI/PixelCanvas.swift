@@ -60,10 +60,26 @@ public struct PixelCanvas: Sendable {
                     // background fills the whole cell, including the line
                     // spacing some terminals (Warp…) add, where a glyph leaves
                     // thin dark stripes across the art.
-                    cell = top == bottom ? Cell(" ", Style(bg: top)) : Cell("▀", Style(fg: top, bg: bottom))
+                    cell = top == bottom ? Cell(" ", Style(bg: top)) : twoColorCell(x: x, row: cellRow, top: top, bottom: bottom)
                 }
                 canvas[column + x, row + cellRow] = cell
             }
         }
+    }
+
+    /// Two colors in one cell. The line spacing some terminals add (Warp…)
+    /// shows the cell's background, so a stripe of it runs along the cell's
+    /// edge: `▀` (background = bottom) puts a bottom-colored stripe on top of
+    /// the cell, `▄` (background = top) a top-colored one at its foot. Pick the
+    /// one whose stripe matches the pixel it touches, else the lighter
+    /// background: a light seam shows far less than a dark one.
+    func twoColorCell(x: Int, row: Int, top: RGB, bottom: RGB) -> Cell {
+        let above = self[x, row * 2 - 1]
+        let below = self[x, row * 2 + 2]
+        let upper = Cell("▀", Style(fg: top, bg: bottom))
+        let lower = Cell("▄", Style(fg: bottom, bg: top))
+        if above == bottom { return upper }
+        if below == top { return lower }
+        return bottom.luminance >= top.luminance ? upper : lower
     }
 }
