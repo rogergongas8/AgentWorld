@@ -24,7 +24,7 @@ struct CodeArea: View {
                 if model.showsInspector {
                     Rectangle().fill(Palette.border).frame(width: 1)
                     InspectorView(session: model.showsLauncher ? nil : model.selectedTab?.sessions.first, folder: model.selectedFolder)
-                        .frame(width: 290)
+                        .frame(width: 340)
                         .background(Palette.panel)
                 }
             }

@@ -27,8 +27,10 @@ struct InspectorView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    SectionTitle(title: "Agents", color: Palette.agent,
-                                 trailing: AnyView(NewKitItemButton(kind: "agent", session: session, provider: provider, config: config)))
+                    SectionTitle(title: "Your crew", color: Palette.claude, trailing: AnyView(HStack(spacing: 8) {
+                        Text("\(config.agents.count)").font(.mono(10)).foregroundStyle(Palette.faint)
+                        NewKitItemButton(kind: "agent", session: session, provider: provider, config: config)
+                    }))
                     ForEach(config.agents, id: \.qualifiedName) { agent in
                         KitAgentRow(agent: agent, session: session, provider: provider)
                     }
@@ -129,25 +131,29 @@ struct KitAgentRow: View {
     var body: some View {
         let look = CharacterLook(name: agent.name)
         let working = session?.store?.runningSubagents.first { $0.type == agent.name || $0.type.hasSuffix(":" + agent.name) }
-        HStack(spacing: 9) {
-            FaceView(figure: .crew(look), scale: 2.8, waving: hovering, busy: working != nil, seed: agent.name.count)
-                .frame(width: 28, height: 17)
-            VStack(alignment: .leading, spacing: 1) {
+        HStack(alignment: .top, spacing: 12) {
+            FaceView(figure: .crew(look), scale: 5, waving: hovering, busy: working != nil, seed: agent.name.count)
+                .frame(width: 50, height: 30)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(agent.name).font(.mono(11.5, .semibold)).foregroundStyle(Color(rgb: look.readableColor))
-                    if let model = agent.model { Text(model).font(.mono(9.5)).foregroundStyle(Palette.faint) }
+                    Text(agent.name).font(.mono(12.5, .semibold)).foregroundStyle(Color(rgb: look.readableColor)).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(agent.model ?? "").font(.mono(10)).foregroundStyle(Palette.faint)
                 }
-                Text(working.map { "● " + ($0.state.action ?? "working") } ?? agent.description.map(SkillCategory.summarize) ?? "")
-                    .font(.mono(10))
+                Text(working.map { "● " + ($0.state.action ?? "working") } ?? agent.description.map(SkillCategory.summarize) ?? "no description")
+                    .font(.mono(10.5))
                     .foregroundStyle(working == nil ? Palette.muted : Palette.live)
-                    .lineLimit(hovering ? 3 : 1)
-            }
-            Spacer(minLength: 0)
-            if hovering {
-                Text("more").font(.mono(10, .semibold)).foregroundStyle(Palette.agent)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !agent.skills.isEmpty {
+                    Text("carries " + agent.skills.joined(separator: ", ")).font(.mono(10)).foregroundStyle(Palette.skill).lineLimit(1)
+                } else if agent.scope == .builtin {
+                    Text("built in").font(.mono(10)).foregroundStyle(Palette.faint)
+                }
             }
         }
-        .padding(6)
+        .padding(8)
         .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Palette.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }

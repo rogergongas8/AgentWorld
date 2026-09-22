@@ -47,6 +47,9 @@ struct HeroStage: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let store = session.store {
+                    SessionMeta(store: store, now: now)
+                }
                 if let saying = session.saying, now.timeIntervalSince(saying.at) < Self.sayingFor {
                     SpeechBubble(text: saying.text, color: session.provider.swiftColor)
                 }
@@ -61,7 +64,8 @@ struct HeroStage: View {
     // MARK: - Scene
 
     private func scene(t: TimeInterval, elapsed: TimeInterval, now: Date, helpers: [Subagent]) -> PixelCanvas {
-        var canvas = PixelCanvas(width: 62, height: 27)
+        // 4 points per pixel fills the column.
+        var canvas = PixelCanvas(width: 73, height: 27)
         let ground = canvas.height - 3
         let activity = session.activity
         let pose = Animator.pose(status: activity.status, flavor: activity.flavor, elapsed: elapsed, t: t,
@@ -153,5 +157,46 @@ struct SpeechBubble: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 7).fill(color.opacity(0.12)))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(color.opacity(0.35)))
+    }
+}
+
+/// Model, branch, time, prompts, and how full the context is: what the
+/// terminal sidebar shows in its header.
+struct SessionMeta: View {
+    let store: SessionStore
+    let now: Date
+
+    var body: some View {
+        let used = store.lastUsage?.context ?? 0
+        let window = (store.context.model?.contains("[1m]") ?? false) || used > 200_000 ? 1_000_000 : 200_000
+        let fraction = min(1, Double(used) / Double(window))
+        let color = fraction > 0.8 ? Palette.error : fraction > 0.6 ? Palette.warning : Palette.live
+        VStack(alignment: .leading, spacing: 5) {
+            Text(parts.joined(separator: " · "))
+                .font(.mono(10))
+                .foregroundStyle(Palette.muted)
+                .lineLimit(1)
+            HStack(spacing: 6) {
+                Text("ctx").font(.mono(9.5)).foregroundStyle(Palette.faint)
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2).fill(Color(rgb: Theme.barEmpty))
+                        RoundedRectangle(cornerRadius: 2).fill(color).frame(width: geometry.size.width * fraction)
+                    }
+                }
+                .frame(height: 6)
+                Text("\(Format.tokens(used))/\(Format.tokens(window))").font(.mono(9.5)).foregroundStyle(Palette.muted)
+            }
+            .help("How much of the conversation's memory (context window) is used. Near full, the CLI starts forgetting early details.")
+        }
+    }
+
+    private var parts: [String] {
+        var parts: [String] = []
+        if let model = store.context.model { parts.append(Format.model(model)) }
+        if let branch = store.context.gitBranch { parts.append("git:\(branch)") }
+        if let started = store.startedAt { parts.append(Format.duration(now.timeIntervalSince(started))) }
+        if store.turns > 0 { parts.append("\(store.turns) prompt\(store.turns == 1 ? "" : "s")") }
+        return parts
     }
 }
