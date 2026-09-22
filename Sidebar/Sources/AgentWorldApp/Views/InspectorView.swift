@@ -2,285 +2,367 @@ import AgentWorldArt
 import AgentWorldKit
 import SwiftUI
 
-/// The right column: the terminal's character acting out what it's doing,
-/// one tip for what you're doing, then the agents and skills this CLI has here. Everything explains itself on hover
-/// and a click hands it to the terminal ("Use the X agent to ▌").
+/// The right panel: the stage (the CLI and its crew, acting out what they
+/// do), then one section at a time — Crew, Skills, Tools, Tips — as a list
+/// you can walk with the keyboard (⌘E, arrows, return). Rows have fixed
+/// heights and the stage never changes size, so nothing jumps.
 struct InspectorView: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject var panel: PanelNavigator
     let session: TerminalSession?
     let folder: String
 
     var body: some View {
-        let terminal = session
-        let provider = session?.provider.isAgent == true ? session!.provider : .claude
+        let provider = model.panelProvider
         let config = model.config(provider, in: folder)
-        // A plain shell can't take "use this agent": show the kit, no actions.
-        let session = session?.provider.isAgent == true ? session : nil
-        GeometryReader { geometry in
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                if let terminal {
-                    HeroStage(session: terminal, compact: geometry.size.height < 620)
-                }
-                if let tip = model.tips(for: session, in: folder).first {
-                    TipCard(tip: tip, config: config, session: session, fromPrompt: session?.store?.log.contains { $0.kind == .prompt } == true)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    SectionTitle(title: "Your crew", color: Palette.claude, trailing: AnyView(HStack(spacing: 8) {
-                        Text("\(config.agents.count)").font(.mono(10)).foregroundStyle(Palette.faint)
-                        NewKitItemButton(kind: "agent", session: session, provider: provider, config: config)
-                    }))
-                    ForEach(config.agents, id: \.qualifiedName) { agent in
-                        KitAgentRow(agent: agent, session: session, provider: provider)
+        // A plain shell can't take "use this": show the kit, no actions.
+        let agentSession = session?.provider.isAgent == true ? session : nil
+        let items = model.panelItems(panel.section)
+        VStack(spacing: 0) {
+            PanelStage(panel: panel, session: session, agents: config.agents)
+                .padding([.horizontal, .top], 12)
+            SectionBar(panel: panel, config: config, tipCount: panel.section == .tips ? items.count : nil,
+                       session: agentSession, provider: provider)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+            Rectangle().fill(Palette.border).frame(height: 1).padding(.top, 8)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        rows(items, config: config, session: agentSession, provider: provider)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
                 }
-
-                SkillShelves(config: config, session: session, provider: provider)
-
-                if !config.mcpServers.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        SectionTitle(title: "Connected to", color: Palette.mcp)
-                        FlowChips(items: config.mcpServers.map(\.name), color: Palette.mcp)
-                    }
-                    .help("MCP servers: tools from other services \(provider.shortName) can call")
+                .onChange(of: panel.selection) { selection in
+                    if items.indices.contains(selection) { withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(items[selection].id) } }
                 }
             }
-            .padding(14)
+            KeyHintBar(panel: panel)
         }
+        .overlay(alignment: .leading) {
+            // Where the keys go: a bar down the edge while the panel has them.
+            if panel.isFocused { Rectangle().fill(Palette.claude).frame(width: 2) }
         }
+    }
+
+    @ViewBuilder
+    private func rows(_ items: [PanelItem], config: AgentConfiguration, session: TerminalSession?, provider: Provider) -> some View {
+        if items.isEmpty {
+            EmptySection(section: panel.section, provider: provider)
+        }
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            if panel.section == .skills, case .skill(let skill) = item, isFirstOfCategory(skill, at: index, in: items) {
+                Text(skill.category.title)
+                    .font(.mono(10, .semibold))
+                    .foregroundStyle(Color(rgb: skill.category.color))
+                    .padding(.horizontal, 8)
+                    .padding(.top, index == 0 ? 2 : 10)
+                    .padding(.bottom, 2)
+            }
+            PanelRow(panel: panel, item: item, index: index, config: config, session: session, provider: provider)
+                .id(item.id)
+        }
+    }
+
+    private func isFirstOfCategory(_ skill: SkillDefinition, at index: Int, in items: [PanelItem]) -> Bool {
+        guard index > 0, case .skill(let previous) = items[index - 1] else { return true }
+        return previous.category != skill.category
     }
 }
 
-struct TipCard: View {
-    let tip: Suggestion
+// MARK: - Section bar
+
+struct SectionBar: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var panel: PanelNavigator
     let config: AgentConfiguration
+    let tipCount: Int?
     let session: TerminalSession?
-    let fromPrompt: Bool
+    let provider: Provider
 
     var body: some View {
-        let (title, summary, color, figure) = describe()
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                Text(fromPrompt ? "TIP · for what you asked" : "TIP · for this repo")
-            }
-            .font(.mono(10.5, .semibold))
-            .foregroundStyle(Palette.warning)
-            HStack(alignment: .top, spacing: 10) {
-                if let figure {
-                    FaceView(figure: figure, scale: 2.4, waving: true).frame(width: 24, height: 15)
-                } else {
-                    Image(systemName: "book.closed.fill").foregroundStyle(color).font(.system(size: 18))
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.mono(12.5, .semibold)).foregroundStyle(color)
-                    Text(summary).font(.mono(11)).foregroundStyle(Palette.text).fixedSize(horizontal: false, vertical: true)
-                    Text("fits: " + tip.reasons.joined(separator: " · ")).font(.mono(10)).foregroundStyle(Palette.faint)
-                }
-            }
-            if let session {
+        HStack(spacing: 2) {
+            ForEach(PanelNavigator.Section.allCases) { section in
+                let selected = panel.section == section
                 Button {
-                    session.type(invocation)
+                    panel.section = section
                 } label: {
-                    Label("Use it", systemImage: "arrow.turn.down.left").font(.mono(11, .semibold))
+                    HStack(spacing: 4) {
+                        Text(section.title)
+                        if let count = count(section) { Text("\(count)").font(.mono(9.5)).foregroundStyle(Palette.faint) }
+                    }
+                    .font(.mono(11, selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Palette.cream : Palette.muted)
+                    .fixedSize()
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selected : .clear))
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Palette.warning.opacity(0.85))
-                .controlSize(.small)
-                .help("Types \"\(invocation)\" into \(session.label) for you to finish")
+                .buttonStyle(.plain)
+                .help("\(section.title) (\(section.rawValue + 1) while the panel has the keys)")
+            }
+            Spacer(minLength: 0)
+            if panel.section == .crew || panel.section == .skills {
+                NewKitItemButton(kind: panel.section == .crew ? "agent" : "skill", session: session, provider: provider,
+                                 config: config, isPresented: $panel.creating)
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.warning.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.warning.opacity(0.35)))
     }
 
-    private var invocation: String {
-        switch tip.kind {
-        case .agent: "Use the \(tip.name) agent to "
-        case .skill: session?.provider.kind == .claude ? "/\(tip.name) " : "Use the \(tip.name) skill to "
-        case .command: "/\(tip.name) "
-        }
-    }
-
-    private func describe() -> (String, String, Color, CharacterFigure?) {
-        switch tip.kind {
-        case .agent:
-            let agent = config.agents.first { $0.qualifiedName == tip.name }
-            let look = CharacterLook(name: agent?.name ?? tip.name)
-            return ("Use the \(agent?.name ?? tip.name) agent", agent?.description.map(SkillCategory.summarize) ?? "", Color(rgb: look.readableColor), .crew(look))
-        case .skill:
-            let skill = config.skills.first { $0.qualifiedName == tip.name }
-            return ("/" + tip.name, skill?.summary ?? "", Color(rgb: Icon.color(for: skill?.name ?? tip.name)), nil)
-        case .command:
-            return ("/" + tip.name, config.commands.first { $0.qualifiedName == tip.name }?.description ?? "", Palette.warning, nil)
+    private func count(_ section: PanelNavigator.Section) -> Int? {
+        switch section {
+        case .crew: config.agents.count
+        case .skills: config.skills.count
+        case .tools: config.mcpServers.count + config.plugins.count + config.commands.count
+        case .tips: nil
         }
     }
 }
 
-struct KitAgentRow: View {
+// MARK: - Rows
+
+/// One row, the same height whatever it holds; selected by keyboard or click.
+struct PanelRow: View {
     @EnvironmentObject private var model: AppModel
-    let agent: AgentDefinition
+    @ObservedObject var panel: PanelNavigator
+    let item: PanelItem
+    let index: Int
+    let config: AgentConfiguration
     let session: TerminalSession?
     let provider: Provider
     @State private var hovering = false
-    @State private var showsDetail = false
 
     var body: some View {
-        let look = CharacterLook(name: agent.name)
-        let working = session?.store?.runningSubagents.first { $0.type == agent.name || $0.type.hasSuffix(":" + agent.name) }
-        HStack(alignment: .top, spacing: 12) {
-            FaceView(figure: .crew(look), scale: 5, waving: hovering, busy: working != nil, seed: agent.name.count)
-                .frame(width: 50, height: 30)
-                .padding(.top, 2)
+        let selected = panel.selection == index
+        HStack(alignment: .center, spacing: 10) {
+            icon.frame(width: 32, alignment: .center)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(agent.name).font(.mono(12.5, .semibold)).foregroundStyle(Color(rgb: look.readableColor)).lineLimit(1)
+                    Text(title).font(.mono(12, .semibold)).foregroundStyle(titleColor).lineLimit(1)
                     Spacer(minLength: 4)
-                    Text(agent.model ?? "").font(.mono(10)).foregroundStyle(Palette.faint)
+                    Text(badge).font(.mono(9.5)).foregroundStyle(Palette.faint).lineLimit(1)
                 }
-                Text(working.map { "● " + ($0.state.action ?? "working") } ?? agent.description.map(SkillCategory.summarize) ?? "no description")
-                    .font(.mono(10.5))
-                    .foregroundStyle(working == nil ? Palette.muted : Palette.live)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !agent.skills.isEmpty {
-                    Text("carries " + agent.skills.joined(separator: ", ")).font(.mono(10)).foregroundStyle(Palette.skill).lineLimit(1)
-                } else if agent.scope == .builtin {
-                    Text("built in").font(.mono(10)).foregroundStyle(Palette.faint)
+                Text(subtitle).font(.mono(10.5)).foregroundStyle(Palette.muted).lineLimit(1)
+                if let extra {
+                    Text(extra).font(.mono(10)).foregroundStyle(extraColor).lineLimit(1)
                 }
             }
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Palette.hover : .clear))
+        .padding(.horizontal, 8)
+        .frame(height: extra == nil ? 44 : 56)
+        .background(RoundedRectangle(cornerRadius: 7).fill(selected && panel.isFocused ? Palette.selected : hovering ? Palette.hover : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(selected && panel.isFocused ? Palette.claude.opacity(0.6) : .clear))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { showsDetail = true }
-        .popover(isPresented: $showsDetail, arrowEdge: .leading) {
-            KitDetailCard(item: .agent(agent), session: session, provider: provider, use: use, isPresented: $showsDetail)
-                .environmentObject(model)
+        .onTapGesture {
+            panel.selection = index
+            model.activate(item, detail: true)
         }
-        .help((agent.description.map(SkillCategory.summarize) ?? agent.name) + "\nClick for details, to use it or to change it.")
+        .popover(isPresented: detailBinding, arrowEdge: .leading) {
+            if let kitItem = item.kitItem {
+                KitDetailCard(item: kitItem, session: session, provider: provider, use: use, isPresented: detailBinding,
+                              startEditing: panel.editing)
+                    .environmentObject(model)
+            }
+        }
+        .help(help)
     }
 
-    private func use() {
-        if let session {
-            session.type("Use the \(agent.qualifiedName) agent to ")
-        } else {
-            model.startChat(with: agent, provider: provider, in: model.selectedFolder)
+    private var detailBinding: Binding<Bool> {
+        Binding(get: { panel.openDetail == item.id },
+                set: { if !$0, panel.openDetail == item.id { panel.openDetail = nil } })
+    }
+
+    private var use: (() -> Void)? {
+        switch item {
+        case .agent: { model.activate(item, detail: false) }
+        case .skill: session == nil ? nil : { model.activate(item, detail: false) }
+        default: nil
+        }
+    }
+
+    // MARK: Content
+
+    @ViewBuilder private var icon: some View {
+        switch item {
+        case .agent(let agent):
+            let working = session?.store?.runningSubagents.contains { $0.type == agent.name || $0.type.hasSuffix(":" + agent.name) } ?? false
+            FaceView(figure: .crew(CharacterLook(name: agent.name)), scale: 3, waving: hovering || panel.openDetail == item.id,
+                     busy: working, seed: agent.name.count)
+                .frame(width: 30, height: 18)
+        case .skill(let skill):
+            RoundedRectangle(cornerRadius: 2).fill(Color(rgb: Icon.color(for: skill.name))).frame(width: 6, height: 26)
+        case .server:
+            Image(systemName: "powerplug.fill").foregroundStyle(Palette.mcp)
+        case .plugin:
+            Image(systemName: "puzzlepiece.extension.fill").foregroundStyle(Palette.agent)
+        case .command:
+            Text("/").font(.mono(16, .bold)).foregroundStyle(Palette.warning)
+        case .tip:
+            Image(systemName: "sparkles").foregroundStyle(Palette.warning)
+        }
+    }
+
+    private var title: String {
+        switch item {
+        case .agent(let agent): agent.name
+        case .skill(let skill): skill.name
+        case .server(let server): server.name
+        case .plugin(let plugin): plugin.name
+        case .command(let command): "/" + command.qualifiedName
+        case .tip(let tip):
+            switch tip.kind {
+            case .agent: "Use the \(tip.name) agent"
+            case .skill, .command: "/" + tip.name
+            }
+        }
+    }
+
+    private var titleColor: Color {
+        switch item {
+        case .agent(let agent): Color(rgb: CharacterLook(name: agent.name).readableColor)
+        case .skill: Palette.cream
+        case .server: Palette.mcp
+        case .plugin: Palette.agent
+        case .command, .tip: Palette.warning
+        }
+    }
+
+    private var badge: String {
+        switch item {
+        case .agent(let agent): agent.model ?? (agent.scope == .builtin ? "built in" : "")
+        case .skill(let skill): skill.plugin ?? (skill.scope == .user ? "yours" : skill.scope == .project ? "project" : "")
+        case .server(let server): server.transport
+        case .plugin(let plugin): plugin.version.map { "v" + $0 } ?? ""
+        case .command(let command): command.plugin ?? ""
+        case .tip: ""
+        }
+    }
+
+    private var subtitle: String {
+        switch item {
+        case .agent(let agent):
+            if let working = session?.store?.runningSubagents.first(where: { $0.type == agent.name || $0.type.hasSuffix(":" + agent.name) }) {
+                return "● " + (working.state.action ?? "working")
+            }
+            return agent.description.map(SkillCategory.summarize) ?? "no description"
+        case .skill(let skill): return skill.summary ?? "no description"
+        case .server(let server): return "\(provider.shortName) can use its tools · \(server.scope.rawValue)"
+        case .plugin(let plugin): return plugin.description ?? pluginContents(plugin)
+        case .command(let command): return command.description ?? "a slash command"
+        case .tip(let tip):
+            switch tip.kind {
+            case .agent: return config.agents.first { $0.qualifiedName == tip.name }?.description.map(SkillCategory.summarize) ?? ""
+            case .skill: return config.skills.first { $0.qualifiedName == tip.name }?.summary ?? ""
+            case .command: return config.commands.first { $0.qualifiedName == tip.name }?.description ?? ""
+            }
+        }
+    }
+
+    private var extra: String? {
+        switch item {
+        case .agent(let agent): agent.skills.isEmpty ? nil : "carries " + agent.skills.joined(separator: ", ")
+        case .plugin(let plugin): plugin.description == nil ? nil : pluginContents(plugin)
+        case .tip(let tip): "fits: " + tip.reasons.joined(separator: " · ")
+        default: nil
+        }
+    }
+
+    private var extraColor: Color {
+        if case .agent = item { return Palette.skill }
+        return Palette.faint
+    }
+
+    private func pluginContents(_ plugin: PluginDefinition) -> String {
+        var parts: [String] = []
+        if !plugin.skills.isEmpty { parts.append("\(plugin.skills.count) skills") }
+        if !plugin.agents.isEmpty { parts.append("\(plugin.agents.count) agents") }
+        if !plugin.commands.isEmpty { parts.append("\(plugin.commands.count) commands") }
+        if !plugin.mcpServers.isEmpty { parts.append("\(plugin.mcpServers.count) MCP") }
+        return parts.isEmpty ? "plugin" : parts.joined(separator: " · ")
+    }
+
+    private var help: String {
+        switch item {
+        case .agent, .skill: "Click (or ↩) for its card: what it does, use it, change it."
+        case .tip: "Click to type it into the terminal."
+        case .command: "Click to type it into the terminal."
+        case .server: "An MCP server: tools from another service the CLI can call."
+        case .plugin: "A plugin: a bundle of skills, agents, commands or servers."
         }
     }
 }
 
-/// Skills grouped by what they're for, as small colored book chips.
-struct SkillShelves: View {
-    let config: AgentConfiguration
-    let session: TerminalSession?
+struct EmptySection: View {
+    let section: PanelNavigator.Section
     let provider: Provider
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(title: "Skills", color: Palette.skill, trailing: AnyView(HStack(spacing: 8) {
-                Text("\(config.skills.count)").font(.mono(10)).foregroundStyle(Palette.faint)
-                NewKitItemButton(kind: "skill", session: session, provider: provider, config: config)
-            }))
-            ForEach(SkillCategory.allCases, id: \.self) { category in
-                let skills = config.skills.filter { $0.category == category }
-                if !skills.isEmpty {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(category.title).font(.mono(10, .semibold)).foregroundStyle(Color(rgb: category.color))
-                        WrapLayout(spacing: 5) {
-                            ForEach(skills, id: \.qualifiedName) { skill in
-                                SkillChip(skill: skill, session: session, provider: provider)
-                            }
-                        }
+        Text(text)
+            .font(.mono(11))
+            .foregroundStyle(Palette.faint)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+    }
+
+    private var text: String {
+        switch section {
+        case .crew: "No agents yet. \"+ New\" describes one and \(provider.shortName) writes it."
+        case .skills: "No skills yet. \"+ New\" describes one and \(provider.shortName) writes it."
+        case .tools: "No MCP servers, plugins or commands for \(provider.shortName) here."
+        case .tips: "Tips show up as you work: they follow what you ask."
+        }
+    }
+}
+
+// MARK: - Key hints
+
+/// What the keys do right now, at the foot of the panel.
+struct KeyHintBar: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var panel: PanelNavigator
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if panel.isFocused {
+                hint("↑↓", "move")
+                hint("↩", "open")
+                hint("u", "use")
+                hint("e", "edit")
+                hint("n", "new")
+                hint("esc", "back")
+            } else {
+                Button {
+                    model.enterPanel()
+                } label: {
+                    HStack(spacing: 10) {
+                        hint("⌘E", "browse with the keyboard")
+                        hint("⌘/", "all shortcuts")
                     }
                 }
+                .buttonStyle(.plain)
             }
+            Spacer(minLength: 0)
         }
-    }
-}
-
-struct SkillChip: View {
-    @EnvironmentObject private var model: AppModel
-    let skill: SkillDefinition
-    let session: TerminalSession?
-    let provider: Provider
-    @State private var hovering = false
-    @State private var showsDetail = false
-
-    var body: some View {
-        let color = Color(rgb: Icon.color(for: skill.name))
-        HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: 5, height: 12)
-            Text(skill.name).font(.mono(10.5)).foregroundStyle(hovering ? Palette.cream : Palette.text).lineLimit(1)
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 5).fill(hovering ? Palette.hover : Palette.raised))
-        .overlay(RoundedRectangle(cornerRadius: 5).stroke(hovering ? color.opacity(0.7) : Palette.border))
-        .onHover { hovering = $0 }
-        .onTapGesture { showsDetail = true }
-        .popover(isPresented: $showsDetail, arrowEdge: .leading) {
-            KitDetailCard(item: .skill(skill), session: session, provider: provider,
-                          use: session.map { session in { session.type(provider.kind == .claude ? "/\(skill.qualifiedName) " : "Use the \(skill.name) skill to ") } },
-                          isPresented: $showsDetail)
-                .environmentObject(model)
-        }
-        .help((skill.summary ?? skill.name) + (skill.plugin.map { "\nFrom plugin \($0)" } ?? "") + "\nClick for details, to use it or to change it.")
-    }
-}
-
-struct FlowChips: View {
-    let items: [String]
-    let color: Color
-
-    var body: some View {
-        WrapLayout(spacing: 5) {
-            ForEach(items, id: \.self) { item in
-                Text(item).font(.mono(10.5)).foregroundStyle(color)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(Palette.raised))
-                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Palette.border))
-            }
-        }
-    }
-}
-
-/// Lays children out left to right, wrapping onto new lines.
-struct WrapLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 300
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > width, x > 0 {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: width, height: y + rowHeight)
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .background(Palette.background.opacity(0.6))
+        .overlay(alignment: .top) { Rectangle().fill(Palette.border).frame(height: 1) }
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX, x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+    private func hint(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Text(key)
+                .fixedSize()
+                .font(.mono(9.5, .semibold))
+                .foregroundStyle(Palette.cream)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(RoundedRectangle(cornerRadius: 3).fill(Palette.raised))
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.border))
+            Text(label).font(.mono(9.5)).foregroundStyle(Palette.muted)
         }
     }
 }

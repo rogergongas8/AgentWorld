@@ -1,9 +1,10 @@
 import Foundation
 
-/// The `agentworld` skill: teaches Claude Code, running inside one of the
-/// app's terminals, to use `agentworld-ctl`. Installed into
-/// `~/.claude/skills/agentworld/` on launch; a copy you've edited (one without
-/// the marker line) is left alone.
+/// The `agentworld` skill: teaches an agent CLI running inside one of the
+/// app's terminals to use `agentworld-ctl`. Installed on launch for every CLI
+/// here that reads skills (`~/.claude/skills`, `~/.codex/skills`); a copy
+/// you've edited (one without the marker line) is left alone. CLIs without
+/// skills still get there: `agentworld-ctl help` explains itself.
 enum AgentWorldSkill {
     static let marker = "<!-- installed by AgentWorld.app: edits are overwritten; delete this line to keep your own version -->"
 
@@ -39,8 +40,8 @@ enum AgentWorldSkill {
     ## Handing work to another pane
 
     1. `agentworld-ctl clis` — pick one. Prefer a *different* CLI for a second
-       opinion or review (Codex reviewing Claude's work catches other things);
-       another `claude` is fine for parallel work.
+       opinion or review (a different model catches different things);
+       another of your own CLI is fine for parallel work.
     2. Open it with a self-contained brief: the other agent sees none of your
        conversation. Say what to do, which files, what "done" looks like, and
        ask it to finish with a short summary.
@@ -66,13 +67,19 @@ enum AgentWorldSkill {
 
     """
 
+    /// Config folders of CLIs that load `skills/<name>/SKILL.md`.
+    static let skillHomes = [".claude", ".codex"]
+
     static func install() {
-        let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills/agentworld", isDirectory: true)
-        let file = folder.appendingPathComponent("SKILL.md")
-        if let existing = try? String(contentsOf: file, encoding: .utf8) {
-            guard existing.contains(marker), existing != text else { return }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        for cli in skillHomes where FileManager.default.fileExists(atPath: home.appendingPathComponent(cli).path) {
+            let folder = home.appendingPathComponent(cli + "/skills/agentworld", isDirectory: true)
+            let file = folder.appendingPathComponent("SKILL.md")
+            if let existing = try? String(contentsOf: file, encoding: .utf8) {
+                guard existing.contains(marker), existing != text else { continue }
+            }
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try? text.write(to: file, atomically: true, encoding: .utf8)
         }
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try? text.write(to: file, atomically: true, encoding: .utf8)
     }
 }

@@ -134,7 +134,10 @@ struct KitDetailCard: View {
     let provider: Provider
     let use: (() -> Void)?
     @Binding var isPresented: Bool
+    /// Opened with `e`: the cursor goes straight to the edit box.
+    var startEditing = false
     @State private var change = ""
+    @FocusState private var editFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -154,6 +157,8 @@ struct KitDetailCard: View {
         .padding(16)
         .frame(width: 380)
         .background(Palette.panel)
+        .onAppear { if startEditing { DispatchQueue.main.async { editFocused = true } } }
+        .onExitCommand { isPresented = false }
     }
 
     private var header: some View {
@@ -236,6 +241,7 @@ struct KitDetailCard: View {
             Text(item.isEditable ? "What should change?" : "Customize a copy — what should be different?")
                 .font(.mono(10.5, .semibold)).foregroundStyle(Palette.cream)
             TextField("e.g. also run the linter before finishing", text: $change, axis: .vertical)
+                .focused($editFocused)
                 .textFieldStyle(.roundedBorder)
                 .font(.mono(11))
                 .lineLimit(2...4)
@@ -269,20 +275,22 @@ struct NewKitItemButton: View {
     let session: TerminalSession?
     let provider: Provider
     let config: AgentConfiguration
-    @State private var showing = false
+    @Binding var isPresented: Bool
 
     var body: some View {
         Button {
-            showing = true
+            isPresented = true
         } label: {
-            Label("New", systemImage: "plus").font(.mono(10, .semibold))
+            Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Palette.raised))
         }
         .buttonStyle(.plain)
         .foregroundStyle(Palette.muted)
         .help("Describe a new \(kind) and \(provider.shortName) writes it for you")
-        .popover(isPresented: $showing, arrowEdge: .leading) {
+        .popover(isPresented: $isPresented, arrowEdge: .leading) {
             NewKitItemCard(kind: kind, session: session, provider: provider,
-                           hasSkillCreator: config.skills.contains { $0.name == "skill-creator" }, isPresented: $showing)
+                           hasSkillCreator: config.skills.contains { $0.name == "skill-creator" }, isPresented: $isPresented)
         }
     }
 }
@@ -296,6 +304,7 @@ struct NewKitItemCard: View {
     @Binding var isPresented: Bool
     @State private var what = ""
     @State private var personal = false
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -307,6 +316,7 @@ struct NewKitItemCard: View {
             Text("What should it do?").font(.mono(10.5, .semibold)).foregroundStyle(Palette.cream)
             TextField(kind == "skill" ? "e.g. write release notes from the git log" : "e.g. review my SwiftUI views for accessibility",
                       text: $what, axis: .vertical)
+                .focused($fieldFocused)
                 .textFieldStyle(.roundedBorder)
                 .font(.mono(11))
                 .lineLimit(2...4)
@@ -329,6 +339,8 @@ struct NewKitItemCard: View {
         .padding(16)
         .frame(width: 380)
         .background(Palette.panel)
+        .onAppear { DispatchQueue.main.async { fieldFocused = true } }
+        .onExitCommand { isPresented = false }
     }
 
     private func send() {

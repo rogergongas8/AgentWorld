@@ -34,18 +34,43 @@ struct AgentWorldApp: App {
         .defaultSize(width: 1360, height: 860)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Terminal…") {
+                Button("Open a CLI…") {
                     model.showsLauncher = true
+                    model.panel.isFocused = false
                 }
                 .keyboardShortcut("t")
+                Button("Add Workspace…") { model.chooseFolder() }
+                    .keyboardShortcut("o")
+                Button("New Project…") { model.showsNewProject = true }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                Divider()
                 Button("Close Tab") {
                     if let tab = model.selectedTab { model.close(tab) }
                 }
                 .keyboardShortcut("w")
             }
+            CommandMenu("Go") {
+                Button("Next Tab") { model.selectTab(offset: 1) }.keyboardShortcut("]", modifiers: [.command, .shift])
+                Button("Previous Tab") { model.selectTab(offset: -1) }.keyboardShortcut("[", modifiers: [.command, .shift])
+                Divider()
+                Button("Next Pane") { model.focusPane(offset: 1) }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                Button("Previous Pane") { model.focusPane(offset: -1) }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                Divider()
+                Button("Next Workspace") { model.selectWorkspace(offset: 1) }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                Button("Previous Workspace") { model.selectWorkspace(offset: -1) }.keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                Divider()
+                Button("Browse the Panel") {
+                    if model.panel.isFocused { model.leavePanel() } else { model.enterPanel() }
+                }
+                .keyboardShortcut("e")
+            }
             CommandMenu("View") {
-                Button(model.showsInspector ? "Hide Tips & Kit" : "Show Tips & Kit") { model.showsInspector.toggle() }
+                Button(model.showsInspector ? "Hide Panel" : "Show Panel") { model.showsInspector.toggle() }
                     .keyboardShortcut("i", modifiers: [.command, .option])
+            }
+            CommandGroup(replacing: .help) {
+                Button("Keyboard Shortcuts") { model.showsShortcuts.toggle() }
+                    .keyboardShortcut("/")
             }
         }
     }

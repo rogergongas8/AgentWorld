@@ -1,6 +1,7 @@
 import AgentWorldArt
 import AgentWorldKit
 import Combine
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -43,6 +44,20 @@ final class AppModel: ObservableObject {
     /// The terminal that had the keyboard when ⌘K opened: skills go there.
     weak var paletteTarget: TerminalSession?
     @Published var profiles: [LaunchProfile] = LaunchProfile.defaults
+    /// The right panel's sections, selection and keyboard focus.
+    let panel = PanelNavigator()
+    /// The pane the panel was about before the keys moved to it.
+    weak var lastPanelSession: TerminalSession?
+    /// Names, pins and last time's panes, by folder (see `Workspaces.swift`).
+    @Published var workspaceInfo: [String: SavedWorkspace] = [:]
+    /// Branch and uncommitted changes, by folder.
+    @Published var git: [String: GitInfo] = [:]
+    private var ticks = 0
+    /// ⌘/ and ⌘⇧N sheets.
+    @Published var showsShortcuts = false
+    @Published var showsNewProject = false
+    /// The card the launcher's arrow keys are on.
+    @Published var launcherIndex = 0
     @Published private(set) var environmentReady = false
     /// Ticks twice a second so statuses and animations stay fresh.
     @Published private(set) var now = Date()
@@ -53,11 +68,19 @@ final class AppModel: ObservableObject {
     private(set) lazy var notifier: Notifier? = Notifier(model: self)
 
     init(folder: String?) {
-        let recents = RecentFolders.load()
-        let start = folder ?? recents.first ?? FileManager.default.homeDirectoryForCurrentUser.path
-        selectedFolder = start
-        folders = [start] + recents.filter { $0 != start }
+        let saved = WorkspaceFile.load()
+        workspaceInfo = Dictionary(saved.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        var ordered = saved.filter(\.pinned).map(\.path) + saved.filter { !$0.pinned }.map(\.path)
+        if let folder, !ordered.contains(folder) { ordered.insert(folder, at: 0) }
+        // Opened from the Dock: where you were last. No workspaces yet: the
+        // launcher welcomes you and suggests some.
+        let last = saved.max { $0.lastOpened < $1.lastOpened }?.path
+        selectedFolder = folder ?? last ?? FileManager.default.homeDirectoryForCurrentUser.path
+        folders = ordered
         profiles = LaunchProfile.load()
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveWorkspaces() }
+        }
 
         // The login shell's PATH, off the main thread; CLIs are found after.
         Task.detached {
@@ -67,6 +90,7 @@ final class AppModel: ObservableObject {
                 self.environmentReady = true
             }
         }
+        installKeyRouter()
         timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect().sink { [weak self] date in
             self?.tick(date)
         }
@@ -78,6 +102,9 @@ final class AppModel: ObservableObject {
             for session in tab.sessions { session.refresh(now: date) }
         }
         notifier?.update(allSessions, now: date)
+        ticks += 1
+        if ticks % 20 == 0 { saveWorkspaces() }
+        if ticks % 60 == 1 { refreshGit() }
     }
 
     // MARK: - Lookups
@@ -137,6 +164,7 @@ final class AppModel: ObservableObject {
     func select(folder: String) {
         if !folders.contains(folder) { folders.insert(folder, at: 0) }
         selectedFolder = folder
+        workspaceInfo[folder, default: SavedWorkspace(path: folder)].lastOpened = Date()
         let open = tabs(in: folder)
         selectedTabID = open.first?.id
         showsLauncher = open.isEmpty
@@ -145,6 +173,8 @@ final class AppModel: ObservableObject {
     func addFolder(_ path: String) {
         RecentFolders.remember(path)
         select(folder: path)
+        saveWorkspaces()
+        refreshGit()
     }
 
     func removeFolder(_ path: String) {
@@ -152,7 +182,10 @@ final class AppModel: ObservableObject {
         folders.removeAll { $0 == path }
         RecentFolders.forget(path)
         if selectedFolder == path, let first = folders.first { select(folder: first) }
+        workspaceInfo[path] = nil
+        saveWorkspaces()
     }
+
 
     // MARK: - Launching
 

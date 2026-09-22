@@ -15,10 +15,34 @@ struct LauncherView: View {
 
     var body: some View {
         ScrollView {
+            if model.folders.isEmpty {
+                VStack(spacing: 22) {
+                    VStack(spacing: 6) {
+                        FaceRow()
+                        (Text("Welcome to ").foregroundColor(Palette.cream) + Text("AgentWorld").foregroundColor(Palette.claude))
+                            .font(.mono(22, .bold))
+                        Text("Your agent CLIs, side by side, in the projects you work on.")
+                            .font(.mono(12))
+                            .foregroundStyle(Palette.muted)
+                    }
+                    .padding(.top, 34)
+                    WelcomeWorkspaces()
+                        .frame(maxWidth: 1000)
+                        .padding(.horizontal, 28)
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                launcher
+            }
+        }
+        .sheet(item: $installHelp) { profile in InstallSheet(profile: profile) }
+    }
+
+    private var launcher: some View {
             VStack(spacing: 22) {
                 VStack(spacing: 6) {
                     FaceRow()
-                    (Text("Start coding in ").foregroundColor(Palette.cream) + Text(URL(fileURLWithPath: folder).lastPathComponent).foregroundColor(Palette.claude))
+                    (Text("Start coding in ").foregroundColor(Palette.cream) + Text(model.workspaceName(folder)).foregroundColor(Palette.claude))
                         .font(.mono(22, .bold))
                     Text(picking ? "Pick up to \(AppModel.maxPanes) (the same CLI more than once is fine), then launch them tiled in one tab."
                                  : "Pick an agent. It runs in a real terminal right here, in this folder.")
@@ -27,9 +51,16 @@ struct LauncherView: View {
                 }
                 .padding(.top, 34)
 
+                let resumable = model.resumablePanes(in: folder)
+                if !resumable.isEmpty, !picking {
+                    ResumeCard(folder: folder, panes: resumable)
+                        .frame(maxWidth: 640)
+                        .padding(.horizontal, 28)
+                }
+
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 250, maximum: 320), spacing: 12)], spacing: 12) {
-                    ForEach(sortedProfiles, id: \.id) { profile in
-                        CLICard(profile: profile, folder: folder, picking: picking, count: picked[profile.id] ?? 0,
+                    ForEach(Array(sortedProfiles.enumerated()), id: \.element.id) { index, profile in
+                        CLICard(profile: profile, keyboardFocus: !picking && index == model.launcherIndex, folder: folder, picking: picking, count: picked[profile.id] ?? 0,
                                 canAdd: pickedCount < AppModel.maxPanes, onCount: { picked[profile.id] = $0 == 0 ? nil : $0 }) {
                             activate(profile)
                         }
@@ -65,7 +96,7 @@ struct LauncherView: View {
                     }
                 }
 
-                if !picking, model.profiles.contains(where: { $0.provider.kind == .claude && model.executable(for: $0) != nil }) {
+                if !picking, model.profiles.contains(where: { !$0.isCustom && $0.provider.isAgent && model.executable(for: $0) != nil }) {
                     WorkflowRow(folder: folder)
                         .frame(maxWidth: 1000)
                         .padding(.horizontal, 28)
@@ -73,8 +104,6 @@ struct LauncherView: View {
                 Spacer().frame(height: 30)
             }
             .frame(maxWidth: .infinity)
-        }
-        .sheet(item: $installHelp) { profile in InstallSheet(profile: profile) }
     }
 
     private var pickedCount: Int { picked.values.reduce(0, +) }
@@ -103,15 +132,25 @@ struct LauncherView: View {
 struct WorkflowRow: View {
     @EnvironmentObject private var model: AppModel
     let folder: String
+    @AppStorage("workflowLead") private var leadID = "claude"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(title: "Workflows · agents working together", color: Palette.agent)
+            let leads = model.profiles.filter { !$0.isCustom && $0.provider.isAgent && model.executable(for: $0) != nil }
+            let lead = leads.first { $0.provider.id == leadID } ?? leads.first
+            SectionTitle(title: "Workflows · agents working together", color: Palette.agent, trailing: AnyView(
+                Picker("Led by", selection: Binding(get: { lead?.provider.id ?? "" }, set: { leadID = $0 })) {
+                    ForEach(leads, id: \.provider.id) { Text($0.provider.name).tag($0.provider.id) }
+                }
+                .font(.mono(11))
+                .fixedSize()
+                .help("The CLI that runs the workflow and opens the others")
+            ))
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 250, maximum: 320), spacing: 12)], spacing: 12) {
                 ForEach(Workflow.all) { workflow in
                     WorkflowCard(workflow: workflow) {
-                        guard let claude = model.profiles.first(where: { $0.provider.kind == .claude && !$0.isCustom }) else { return }
-                        model.launch(claude, in: folder, typing: workflow.prompt)
+                        guard let lead else { return }
+                        model.launch(lead, in: folder, typing: workflow.prompt)
                     }
                 }
             }
@@ -145,7 +184,7 @@ struct WorkflowCard: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Opens Claude with this plan typed. Add your task at the end and press return.")
+        .help("Opens the lead CLI with this plan typed. Add your task at the end and press return.")
     }
 }
 
@@ -164,6 +203,8 @@ struct FaceRow: View {
 struct CLICard: View {
     @EnvironmentObject private var model: AppModel
     let profile: LaunchProfile
+    /// The arrow keys are on this card: ↩ opens it.
+    var keyboardFocus = false
     let folder: String
     let picking: Bool
     let count: Int
@@ -176,7 +217,7 @@ struct CLICard: View {
         let provider = profile.provider
         let ready = model.executable(for: profile) != nil
         let config = ready && provider.isAgent ? model.config(provider, in: folder) : nil
-        let picked = count > 0
+        let picked = count > 0 || keyboardFocus
         Button(action: action) {
             HStack(spacing: 14) {
                 FaceView(figure: provider.figure, scale: 3.6, waving: hovering && ready, sleeping: !ready, seed: provider.id.count)

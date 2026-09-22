@@ -3,97 +3,163 @@ import AgentWorldKit
 import SwiftUI
 import TerminalUI
 
-/// The top of the right column: the focused terminal's character, big, acting
-/// out what it's doing right now (thinking, running tests, reading…), with the
-/// subagents it sent out working beside it. With nothing to do it plays with a
-/// ball, has a coffee, and eventually falls asleep.
-struct HeroStage: View {
-    @ObservedObject var session: TerminalSession
-    /// Short windows: a smaller scene, no room for subagents.
-    var compact = false
+/// The top of the right panel, always the same height: the terminal's CLI,
+/// big, acting out what it's doing (tests, git, reading…), with your crew
+/// standing beside it full-body. Each crew member potters about on its own
+/// (bobs, plays ball, has a coffee) and, when the CLI sends it out as a
+/// subagent, acts out that work instead. Click one to see its card.
+struct PanelStage: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var panel: PanelNavigator
+    let session: TerminalSession?
+    let agents: [AgentDefinition]
 
-    private static let maxHelpers = 2
+    static let sceneHeight: CGFloat = 112
+    private static let maxCrew = 5
     /// How long a line from `agentworld-ctl say` stays up.
     private static let sayingFor: TimeInterval = 120
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.1)) { context in
             let now = context.date
-            let activity = session.activity
-            let elapsed = now.timeIntervalSince(activity.since)
-            let helpers = compact ? [] : session.store?.runningSubagents ?? []
-            VStack(alignment: .leading, spacing: 10) {
-                PixelImage(canvas: scene(t: now.timeIntervalSinceReferenceDate, elapsed: elapsed, now: now, helpers: helpers),
-                           scale: compact ? 3 : 4)
+            VStack(alignment: .leading, spacing: 8) {
+                scene(now: now)
+                    .frame(height: Self.sceneHeight)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, compact ? 4 : 10)
                     .background(
-                        LinearGradient(colors: [Palette.background, session.provider.swiftColor.opacity(0.10)],
-                                       startPoint: .top, endPoint: .bottom)
+                        LinearGradient(colors: [Palette.background, accent.opacity(0.12)], startPoint: .top, endPoint: .bottom)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        StatusDot(tone: session.status.tone)
-                        Text(headline(elapsed: elapsed))
-                            .font(.mono(compact ? 12 : 13.5, .semibold))
-                            .foregroundStyle(session.provider.swiftColor)
-                        Spacer(minLength: 0)
-                        Text(session.label).font(.mono(10)).foregroundStyle(Palette.faint).lineLimit(1)
-                    }
-                    Text(detail(elapsed: elapsed, helpers: helpers))
-                        .font(.mono(10.5))
-                        .foregroundStyle(Palette.muted)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let store = session.store {
-                    SessionMeta(store: store, now: now)
-                }
-                if let saying = session.saying, now.timeIntervalSince(saying.at) < Self.sayingFor {
-                    SpeechBubble(text: saying.text, color: session.provider.swiftColor)
-                }
+                    .overlay(alignment: .topLeading) { bubble(now: now) }
+                caption(now: now)
             }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(Palette.raised))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(session.provider.swiftColor.opacity(0.25)))
-        .help("What \(session.label) is doing right now. It acts out each tool: a flask for tests, a branch for git, a book while reading.")
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(0.25)))
     }
+
+    private var accent: Color { session?.provider.swiftColor ?? Palette.claude }
 
     // MARK: - Scene
 
-    private func scene(t: TimeInterval, elapsed: TimeInterval, now: Date, helpers: [Subagent]) -> PixelCanvas {
-        // 4 points per pixel fills the column.
-        var canvas = PixelCanvas(width: 73, height: 27)
-        let ground = canvas.height - 3
-        let activity = session.activity
-        let pose = Animator.pose(status: activity.status, flavor: activity.flavor, elapsed: elapsed, t: t,
-                                 seed: session.label.count, recentError: false)
-        switch session.provider.figure {
-        case .claude: CharacterPainter.drawClaude(on: &canvas, x: 6, ground: ground, pose: pose)
-        case .crew(let look): CharacterPainter.drawCrew(on: &canvas, look: look, x: 8, ground: ground, pose: pose)
+    @ViewBuilder private func scene(now: Date) -> some View {
+        let t = now.timeIntervalSinceReferenceDate
+        let helpers = session?.store?.runningSubagents ?? []
+        ZStack(alignment: .bottom) {
+            // Grass over earth.
+            VStack(spacing: 0) {
+                Rectangle().fill(Color(rgb: RGB(hex: 0x3FA34D))).frame(height: 3)
+                Rectangle().fill(Color(rgb: RGB(hex: 0x6B4F3A))).frame(height: 7)
+            }
+            HStack(alignment: .bottom, spacing: 2) {
+                PixelImage(canvas: mainCanvas(now: now, t: t), scale: 3)
+                    .help(session.map { "\($0.label): \($0.status.text)" } ?? "Pick a CLI to start")
+                Spacer(minLength: 4)
+                ForEach(Array(crew.enumerated()), id: \.element.qualifiedName) { index, agent in
+                    let working = helpers.first { $0.type == agent.name || $0.type.hasSuffix(":" + agent.name) }
+                    let selected = panel.section == .crew && panel.openDetail == "agent:" + agent.qualifiedName
+                    PixelImage(canvas: crewCanvas(agent, index: index, working: working, now: now, t: t, waving: selected), scale: 2)
+                        .overlay(alignment: .bottom) {
+                            if selected { Rectangle().fill(Palette.cream).frame(width: 12, height: 2).offset(y: 5) }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            panel.section = .crew
+                            panel.selection = agents.firstIndex { $0.qualifiedName == agent.qualifiedName } ?? 0
+                            panel.openDetail = "agent:" + agent.qualifiedName
+                        }
+                        .help("\(agent.name)\(working.map { " — working: \($0.state.action ?? "on it")" } ?? ""). Click for its card.")
+                }
+                if agents.count > Self.maxCrew {
+                    Text("+\(agents.count - Self.maxCrew)").font(.mono(10)).foregroundStyle(Palette.muted).padding(.bottom, 14)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
         }
-        for (index, helper) in helpers.prefix(Self.maxHelpers).enumerated() {
-            let status = helper.state.status
-            let helperPose = Animator.pose(status: status, flavor: Flavor.from(action: helper.state.action, status: status),
-                                           elapsed: now.timeIntervalSince(helper.state.since), t: t,
-                                           seed: helper.type.count + index, recentError: false)
-            CharacterPainter.drawCrew(on: &canvas, look: CharacterLook(name: helper.type), x: 34 + index * 14, ground: ground, pose: helperPose)
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+
+    /// Working helpers first, then the rest, up to what fits.
+    private var crew: [AgentDefinition] {
+        let working = Set((session?.store?.runningSubagents ?? []).map(\.type))
+        let sorted = agents.filter { working.contains($0.name) } + agents.filter { !working.contains($0.name) }
+        return Array(sorted.prefix(Self.maxCrew))
+    }
+
+    private func mainCanvas(now: Date, t: TimeInterval) -> PixelCanvas {
+        let figure = session?.provider.figure ?? Provider.claude.figure
+        let pose: Pose
+        if let session {
+            let activity = session.activity
+            pose = Animator.pose(status: activity.status, flavor: activity.flavor, elapsed: now.timeIntervalSince(activity.since),
+                                 t: t, seed: session.label.count, recentError: false)
+        } else {
+            pose = Animator.waving(t: t)
         }
-        // Grass over earth.
-        canvas.rect(x: 0, y: ground, width: canvas.width, height: 1, RGB(hex: 0x3FA34D))
-        canvas.rect(x: 0, y: ground + 1, width: canvas.width, height: 2, RGB(hex: 0x6B4F3A))
-        for tuft in stride(from: 3, to: canvas.width, by: 9) { canvas[tuft, ground - 1] = RGB(hex: 0x3FA34D) }
+        return StageActor.canvas(figure, pose: pose)
+    }
+
+    /// A crew member: acting out its subagent work, else pottering about on a
+    /// cycle of its own (offset by name, so they never all do the same thing).
+    private func crewCanvas(_ agent: AgentDefinition, index: Int, working: Subagent?, now: Date, t: TimeInterval, waving: Bool) -> PixelCanvas {
+        let seed = agent.name.count + index * 7
+        let pose: Pose
+        if let working {
+            let status = working.state.status
+            pose = Animator.pose(status: status, flavor: Flavor.from(action: working.state.action, status: status),
+                                 elapsed: now.timeIntervalSince(working.state.since), t: t, seed: seed, recentError: false)
+        } else if waving {
+            pose = Animator.waving(t: t)
+        } else {
+            let cycle = (t + Double(seed) * 17).truncatingRemainder(dividingBy: 80)
+            pose = Animator.pose(status: .idle, flavor: .plain, elapsed: cycle, t: t, seed: seed, recentError: false)
+        }
+        var canvas = PixelCanvas(width: CharacterPainter.crewSize.width + 5, height: CharacterPainter.crewSize.height + 9)
+        CharacterPainter.drawCrew(on: &canvas, look: CharacterLook(name: agent.name), x: 1, ground: canvas.height - 1, pose: pose)
         return canvas
     }
 
     // MARK: - Words
 
-    /// What it's doing, in two or three words. Idle phases follow the
-    /// animation: `Animator.pose(status:flavor:…)` plays, then has a coffee.
-    private func headline(elapsed: TimeInterval) -> String {
+    @ViewBuilder private func bubble(now: Date) -> some View {
+        if let saying = session?.saying, now.timeIntervalSince(saying.at) < Self.sayingFor {
+            SpeechBubble(text: saying.text, color: accent)
+                .lineLimit(3)
+                .padding(8)
+        }
+    }
+
+    /// Fixed-height lines: the panel below never moves when the words change.
+    @ViewBuilder private func caption(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                StatusDot(tone: session?.status.tone ?? .idle)
+                Text(headline(now: now))
+                    .font(.mono(13.5, .semibold))
+                    .foregroundStyle(accent)
+                Spacer(minLength: 0)
+                Text(session?.label ?? "").font(.mono(10)).foregroundStyle(Palette.faint)
+            }
+            .lineLimit(1)
+            .frame(height: 18)
+            Text(detail(now: now))
+                .font(.mono(10.5))
+                .foregroundStyle(Palette.muted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(height: 14, alignment: .leading)
+            SessionMeta(store: session?.store, now: now)
+                .frame(height: 30)
+        }
+    }
+
+    private func headline(now: Date) -> String {
+        guard let session else { return "Pick a CLI to start" }
         let activity = session.activity
+        let elapsed = now.timeIntervalSince(activity.since)
         if session.status.tone == .ended { return "Finished" }
         switch activity.status {
         case .idle:
@@ -119,7 +185,9 @@ struct HeroStage: View {
         }
     }
 
-    private func detail(elapsed: TimeInterval, helpers: [Subagent]) -> String {
+    private func detail(now: Date) -> String {
+        guard let session else { return "Your crew is waiting. Open a CLI and they get to work." }
+        let elapsed = now.timeIntervalSince(session.activity.since)
         var text: String
         switch session.activity.status {
         case .idle where session.status.tone != .ended:
@@ -129,12 +197,8 @@ struct HeroStage: View {
         default:
             text = session.status.text
         }
-        if !helpers.isEmpty {
-            let names = helpers.map(\.type)
-            let shown = names.prefix(Self.maxHelpers).joined(separator: ", ")
-            let more = names.count > Self.maxHelpers ? " +\(names.count - Self.maxHelpers)" : ""
-            text += " · helping: \(shown)\(more)"
-        }
+        let helpers = session.store?.runningSubagents.map(\.type) ?? []
+        if !helpers.isEmpty { text += " · with " + helpers.joined(separator: ", ") }
         return text
     }
 }
@@ -155,43 +219,50 @@ struct SpeechBubble: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 7).fill(color.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(color.opacity(0.35)))
+        .background(RoundedRectangle(cornerRadius: 7).fill(Palette.panel.opacity(0.95)))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(color.opacity(0.5)))
     }
 }
 
 /// Model, branch, time, prompts, and how full the context is: what the
-/// terminal sidebar shows in its header.
+/// terminal sidebar shows in its header. Keeps its height when empty.
 struct SessionMeta: View {
-    let store: SessionStore
+    let store: SessionStore?
     let now: Date
 
     var body: some View {
-        let used = store.lastUsage?.context ?? 0
-        let window = (store.context.model?.contains("[1m]") ?? false) || used > 200_000 ? 1_000_000 : 200_000
-        let fraction = min(1, Double(used) / Double(window))
-        let color = fraction > 0.8 ? Palette.error : fraction > 0.6 ? Palette.warning : Palette.live
-        VStack(alignment: .leading, spacing: 5) {
-            Text(parts.joined(separator: " · "))
-                .font(.mono(10))
-                .foregroundStyle(Palette.muted)
-                .lineLimit(1)
-            HStack(spacing: 6) {
-                Text("ctx").font(.mono(9.5)).foregroundStyle(Palette.faint)
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2).fill(Color(rgb: Theme.barEmpty))
-                        RoundedRectangle(cornerRadius: 2).fill(color).frame(width: geometry.size.width * fraction)
+        if let store {
+            let used = store.lastUsage?.context ?? 0
+            let window = (store.context.model?.contains("[1m]") ?? false) || used > 200_000 ? 1_000_000 : 200_000
+            let fraction = min(1, Double(used) / Double(window))
+            let color = fraction > 0.8 ? Palette.error : fraction > 0.6 ? Palette.warning : Palette.live
+            VStack(alignment: .leading, spacing: 5) {
+                Text(parts(store).joined(separator: " · "))
+                    .font(.mono(10))
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text("ctx").font(.mono(9.5)).foregroundStyle(Palette.faint)
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2).fill(Color(rgb: Theme.barEmpty))
+                            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: geometry.size.width * fraction)
+                        }
                     }
+                    .frame(height: 6)
+                    Text("\(Format.tokens(used))/\(Format.tokens(window))").font(.mono(9.5)).foregroundStyle(Palette.muted)
                 }
-                .frame(height: 6)
-                Text("\(Format.tokens(used))/\(Format.tokens(window))").font(.mono(9.5)).foregroundStyle(Palette.muted)
+                .help("How much of the conversation's memory (context window) is used. Near full, the CLI starts forgetting early details.")
             }
-            .help("How much of the conversation's memory (context window) is used. Near full, the CLI starts forgetting early details.")
+        } else {
+            Text("Session details show up after the first prompt.")
+                .font(.mono(10))
+                .foregroundStyle(Palette.faint)
+                .frame(maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
-    private var parts: [String] {
+    private func parts(_ store: SessionStore) -> [String] {
         var parts: [String] = []
         if let model = store.context.model { parts.append(Format.model(model)) }
         if let branch = store.context.gitBranch { parts.append("git:\(branch)") }

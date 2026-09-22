@@ -35,13 +35,21 @@ struct LeftColumn: View {
 
 struct WorkspaceList: View {
     @EnvironmentObject private var model: AppModel
+    @State private var dropTargeted = false
 
     var body: some View {
         SectionTitle(title: "Workspaces", trailing: AnyView(
-            Button(action: pickFolder) { Image(systemName: "plus") }
-                .buttonStyle(.plain)
-                .foregroundStyle(Palette.muted)
-                .help("Open a folder as a workspace")
+            Menu {
+                Button("Add a Folder…  ⌘O") { model.chooseFolder() }
+                Button("New Project or Clone…  ⌘⇧N") { model.showsNewProject = true }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .foregroundStyle(Palette.muted)
+            .help("Add a workspace: a folder, a new project or a clone")
         ))
         VStack(alignment: .leading, spacing: 4) {
             ForEach(model.folders, id: \.self) { folder in
@@ -53,24 +61,46 @@ struct WorkspaceList: View {
                 }
             }
         }
-        Button(action: pickFolder) {
-            Label("Open a folder…", systemImage: "folder.badge.plus")
+        if model.folders.isEmpty {
+            Text("No workspaces yet. Add a project folder — or drop one here.")
+                .font(.mono(10.5))
+                .foregroundStyle(Palette.faint)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        Button(action: model.chooseFolder) {
+            Label("Add a folder…", systemImage: "folder.badge.plus")
                 .font(.mono(11.5))
-                .foregroundStyle(Palette.muted)
+                .foregroundStyle(dropTargeted ? Palette.live : Palette.muted)
         }
         .buttonStyle(.plain)
         .padding(.top, 4)
+        .help("Or drag project folders from Finder onto this column")
     }
+}
 
-    private func pickFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Open Workspace"
-        if panel.runModal() == .OK, let url = panel.url {
-            model.addFolder(url.path)
-        }
+/// Folders dropped on the left column become workspaces.
+struct FolderDrop: ViewModifier {
+    @EnvironmentObject private var model: AppModel
+    @State private var targeted = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if targeted {
+                    RoundedRectangle(cornerRadius: 8).stroke(Palette.live, style: StrokeStyle(lineWidth: 2, dash: [6, 4])).padding(6)
+                }
+            }
+            .onDrop(of: [.fileURL], isTargeted: $targeted) { providers in
+                for provider in providers {
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                        guard let url else { return }
+                        var isDirectory: ObjCBool = false
+                        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else { return }
+                        Task { @MainActor in model.addFolder(url.path) }
+                    }
+                }
+                return true
+            }
     }
 }
 
@@ -78,20 +108,38 @@ struct FolderRow: View {
     @EnvironmentObject private var model: AppModel
     let folder: String
     @State private var hovering = false
+    @State private var renaming = false
+    @State private var newName = ""
 
     var body: some View {
         let selected = model.selectedFolder == folder
         let count = model.tabs(in: folder).reduce(0) { $0 + $1.sessions.count }
+        let git = model.git[folder]
+        let pinned = model.workspaceInfo[folder]?.pinned == true
         Button {
             model.select(folder: folder)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: selected ? "folder.fill" : "folder")
                     .foregroundStyle(selected ? Palette.claude : Palette.muted)
-                Text(URL(fileURLWithPath: folder).lastPathComponent)
-                    .font(.mono(12.5, selected ? .semibold : .regular))
-                    .foregroundStyle(selected ? Palette.cream : Palette.text)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Text(model.workspaceName(folder))
+                            .font(.mono(12.5, selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? Palette.cream : Palette.text)
+                            .lineLimit(1)
+                        if pinned { Image(systemName: "pin.fill").font(.system(size: 8)).foregroundStyle(Palette.faint) }
+                    }
+                    if let branch = git?.branch {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.branch").font(.system(size: 8))
+                            Text(branch).lineLimit(1)
+                            if git?.dirty == true { Circle().fill(Palette.warning).frame(width: 5, height: 5) }
+                        }
+                        .font(.mono(9.5))
+                        .foregroundStyle(Palette.faint)
+                    }
+                }
                 Spacer()
                 if hovering {
                     Button {
@@ -101,7 +149,7 @@ struct FolderRow: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.faint)
-                    .help("Remove from the list (closes its terminals)")
+                    .help("Remove from the list (closes its terminals; the folder stays on disk)")
                 } else if count > 0 {
                     Text("\(count)").font(.mono(10.5)).foregroundStyle(Palette.muted)
                 }
@@ -113,7 +161,54 @@ struct FolderRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help(folder)
+        .help(folder + (git?.dirty == true ? "\nHas uncommitted changes" : ""))
+        .contextMenu {
+            Button("Rename…") {
+                newName = model.workspaceName(folder)
+                renaming = true
+            }
+            Button(pinned ? "Unpin" : "Pin to Top") { model.togglePin(folder) }
+            Divider()
+            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder)]) }
+            if let editor = Editor.installed {
+                Button("Open in \(editor.name)") { editor.open(folder) }
+            }
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(folder, forType: .string)
+            }
+            Divider()
+            Button("Remove from AgentWorld") { model.removeFolder(folder) }
+        }
+        .alert("Rename workspace", isPresented: $renaming) {
+            TextField("Name", text: $newName)
+            Button("Rename") { model.rename(workspace: folder, to: newName) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Only in AgentWorld; the folder keeps its name. Leave it empty to use the folder's name.")
+        }
+    }
+}
+
+/// A code editor to open a workspace in, if one is installed.
+struct Editor {
+    let name: String
+    let bundleID: String
+
+    static let known = [
+        Editor(name: "Cursor", bundleID: "com.todesktop.230313mzl4w4u92"),
+        Editor(name: "VS Code", bundleID: "com.microsoft.VSCode"),
+        Editor(name: "Zed", bundleID: "dev.zed.Zed"),
+        Editor(name: "Xcode", bundleID: "com.apple.dt.Xcode"),
+    ]
+
+    static var installed: Editor? {
+        known.first { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil }
+    }
+
+    func open(_ folder: String) {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.open([URL(fileURLWithPath: folder)], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
     }
 }
 

@@ -63,10 +63,19 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     var provider: Provider { profile.provider }
     var label: String { agentName ?? (profile.isCustom ? profile.name : provider.name) }
     var folderName: String { URL(fileURLWithPath: folder).lastPathComponent }
+    /// The conversation id the CLI can resume later, if it has one.
+    var resumeID: String? {
+        if let claudeSessionId { return claudeSessionId }
+        // Codex rollout files end in the session's UUID.
+        if let file = codex?.fileURL?.deletingPathExtension().lastPathComponent, file.count >= 36 { return String(file.suffix(36)) }
+        return nil
+    }
+
     /// The live Claude transcript, once there is one.
     var store: SessionStore? { feed?.connection == .following ? feed?.store : nil }
 
-    init(profile: LaunchProfile, executable: String, folder: String, agentName: String? = nil, typing: String? = nil, submitTyping: Bool = false) {
+    init(profile: LaunchProfile, executable: String, folder: String, agentName: String? = nil, typing: String? = nil, submitTyping: Bool = false,
+         resumeID: String? = nil) {
         number = Self.nextNumber
         Self.nextNumber += 1
         self.profile = profile
@@ -74,7 +83,14 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         self.agentName = agentName
 
         var arguments = profile.args
-        if profile.provider.kind == .claude, !arguments.contains(where: { ["-c", "--continue", "-r", "--resume", "--session-id"].contains($0) }) {
+        if profile.provider.kind == .claude, let resumeID {
+            // The CLI's own resume; the conversation keeps its id, so we follow it.
+            claudeSessionId = resumeID
+            arguments = ["--resume", resumeID] + arguments
+        } else if profile.provider.kind == .codex, let resumeID {
+            claudeSessionId = nil
+            arguments = ["resume", resumeID] + arguments
+        } else if profile.provider.kind == .claude, !arguments.contains(where: { ["-c", "--continue", "-r", "--resume", "--session-id"].contains($0) }) {
             let id = UUID().uuidString.lowercased()
             claudeSessionId = id
             arguments = ["--session-id", id] + arguments

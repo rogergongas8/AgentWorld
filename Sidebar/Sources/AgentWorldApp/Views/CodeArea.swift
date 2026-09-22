@@ -10,8 +10,10 @@ struct CodeArea: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TabStrip(tabs: model.tabs(in: model.selectedFolder))
-            Rectangle().fill(Palette.border).frame(height: 1)
+            if !model.folders.isEmpty {
+                TabStrip(tabs: model.tabs(in: model.selectedFolder))
+                Rectangle().fill(Palette.border).frame(height: 1)
+            }
             HStack(spacing: 0) {
                 Group {
                     if model.showsLauncher || model.selectedTab == nil || model.selectedTab?.folder != model.selectedFolder {
@@ -23,7 +25,7 @@ struct CodeArea: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if model.showsInspector {
                     Rectangle().fill(Palette.border).frame(width: 1)
-                    InspectorView(session: model.showsLauncher ? nil : model.selectedTab?.sessions.first, folder: model.selectedFolder)
+                    InspectorView(panel: model.panel, session: model.panelSession, folder: model.selectedFolder)
                         .frame(width: 340)
                         .background(Palette.panel)
                 }

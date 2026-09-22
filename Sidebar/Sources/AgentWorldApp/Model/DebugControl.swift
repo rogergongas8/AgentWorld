@@ -60,11 +60,29 @@ enum DebugControl {
                 // render-card <skill or agent name> <png>: the detail popover, drawn offscreen.
                 let words = argument.split(separator: " ", maxSplits: 1).map(String.init)
                 if words.count == 2 { renderCard(named: words[0], to: words[1], model: model) }
+            case "keys":
+                // keys down down return | esc | u… : fed to the key router like real presses.
+                for name in argument.split(separator: " ").map(String.init) { press(name, model: model) }
+            case "panel": if argument == "on" { model.enterPanel() } else { model.leavePanel() }
+            case "shortcuts": model.showsShortcuts = argument != "off"
             case "type":
                 model.selectedTab?.sessions.first?.type(argument)
             default: break
             }
         }
+    }
+
+    private static func press(_ name: String, model: AppModel) {
+        let codes: [String: (UInt16, String)] = [
+            "down": (125, ""), "up": (126, ""), "right": (124, ""), "left": (123, ""),
+            "return": (36, "\r"), "esc": (53, "\u{1b}"), "tab": (48, "\t"),
+        ]
+        let (code, characters) = codes[name] ?? (0, name)
+        guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                           windowNumber: NSApp.windows.first?.windowNumber ?? 0, context: nil,
+                                           characters: characters, charactersIgnoringModifiers: characters,
+                                           isARepeat: false, keyCode: code) else { return }
+        _ = model.route(event)
     }
 
     private static func renderCard(named name: String, to path: String, model: AppModel) {

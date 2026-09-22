@@ -12,6 +12,7 @@ struct RootView: View {
             Rectangle().fill(Palette.border).frame(height: 1)
             HStack(spacing: 0) {
                 LeftColumn()
+                    .modifier(FolderDrop())
                     .frame(width: 250)
                     .background(Palette.panel)
                 Rectangle().fill(Palette.border).frame(width: 1)
@@ -27,6 +28,20 @@ struct RootView: View {
     }
 
     @ViewBuilder private var overlays: some View {
+        if model.showsNewProject {
+            ZStack {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsNewProject = false }
+                NewProjectSheet(isPresented: $model.showsNewProject)
+            }
+            .transition(.opacity)
+        }
+        if model.showsShortcuts {
+            ZStack {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsShortcuts = false }
+                ShortcutsSheet(isPresented: $model.showsShortcuts)
+            }
+            .transition(.opacity)
+        }
         if model.showsPalette || model.showsKit {
             ZStack(alignment: .top) {
                 Color.black.opacity(0.45)
