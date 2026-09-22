@@ -1,21 +1,30 @@
 import AgentWorldKit
 import Foundation
 
-/// The hub's terminals, as tmux windows in the hub's own tmux server (the
-/// `agentworld` shell command starts it with `tmux -L agentworld`). Each
-/// window runs one agent CLI on the left and its AgentWorld sidebar on the
-/// right; window options (`@aw_*`) remember which CLI and folder it is.
+/// The hub's terminals, as tmux windows and panes in the hub's own tmux
+/// server (the `agentworld` shell command starts it with `tmux -L agentworld`).
+/// A window holds one CLI plus its AgentWorld sidebar, or several CLIs tiled
+/// side by side. Pane options (`@aw_*`) remember which CLI, folder and Claude
+/// session each pane is; the border shows `@aw_label` as a title bar.
 struct Workspace {
-    struct Window: Equatable {
+    struct Pane: Equatable {
         let id: String
-        let index: Int
-        let name: String
+        let windowId: String
+        let windowIndex: Int
+        /// "Claude Code", "Codex"…
+        let label: String
+        /// What the program itself set as its title (Claude shows its task).
+        let title: String
         let provider: Provider?
         let cwd: String?
-        let profile: String?
-        let isActive: Bool
-        /// When tmux last saw output in it.
+        let sessionId: String?
+        let isFocused: Bool
+        /// When tmux last saw output in its window.
         let lastActivity: Date?
+        /// When the hub opened it.
+        let startedAt: Date?
+
+        var folderName: String { cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "?" }
     }
 
     enum Failure: Error, CustomStringConvertible {
@@ -36,24 +45,33 @@ struct Workspace {
 
     static var isInsideTmux: Bool { ProcessInfo.processInfo.environment["TMUX"] != nil }
 
+    /// Whether this process runs inside the `agentworld` hub (its tmux server
+    /// socket is named "agentworld"), where new terminals become tabs.
+    static var isInsideHub: Bool {
+        guard let socket = ProcessInfo.processInfo.environment["TMUX"]?.split(separator: ",").first else { return false }
+        return URL(fileURLWithPath: String(socket)).lastPathComponent == "agentworld"
+    }
+
     // MARK: - Queries
 
-    func windows() -> [Window] {
-        let format = ["#{window_id}", "#{window_index}", "#{window_name}", "#{@aw_provider}", "#{@aw_cwd}", "#{@aw_profile}", "#{window_active}", "#{window_activity}"]
-            .joined(separator: "\t")
-        guard let output = try? tmux(["list-windows", "-F", format]) else { return [] }
+    /// Every CLI pane in the session (sidebars and the hub itself excluded).
+    func panes() -> [Pane] {
+        let fields = ["#{pane_id}", "#{window_id}", "#{window_index}", "#{@aw_label}", "#{pane_title}", "#{@aw_provider}",
+                      "#{@aw_cwd}", "#{@aw_session}", "#{&&:#{window_active},#{pane_active}}", "#{window_activity}", "#{@aw_role}", "#{@aw_started}"]
+        guard let output = try? tmux(["list-panes", "-s", "-F", fields.joined(separator: "\t")]) else { return [] }
         return output.split(separator: "\n").compactMap { line in
-            let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard fields.count == 8, let index = Int(fields[1]) else { return nil }
-            return Window(
-                id: fields[0],
-                index: index,
-                name: fields[2],
-                provider: Provider.named(fields[3]),
-                cwd: fields[4].isEmpty ? nil : fields[4],
-                profile: fields[5].isEmpty ? nil : fields[5],
-                isActive: fields[6] == "1",
-                lastActivity: Double(fields[7]).map { Date(timeIntervalSince1970: $0) }
+            let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard f.count == fields.count, f[10] == "cli", let index = Int(f[2]) else { return nil }
+            return Pane(
+                id: f[0], windowId: f[1], windowIndex: index,
+                label: f[3].isEmpty ? f[4] : f[3],
+                title: f[4],
+                provider: Provider.named(f[5]),
+                cwd: f[6].isEmpty ? nil : f[6],
+                sessionId: f[7].isEmpty ? nil : f[7],
+                isFocused: f[8] == "1",
+                lastActivity: Double(f[9]).map { Date(timeIntervalSince1970: $0) },
+                startedAt: Double(f[11]).map { Date(timeIntervalSince1970: $0) }
             )
         }
     }
@@ -62,61 +80,148 @@ struct Workspace {
     /// folder, so the picker follows you.
     func requestedDirectory() -> String? {
         let value = try? tmux(["show-options", "-qv", "@aw_request_cwd"])
-        return value.flatMap { $0.isEmpty ? nil : $0 }
+        return value.flatMap { $0.isEmpty ? nil : $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     func clearRequestedDirectory() {
         _ = try? tmux(["set-option", "-u", "@aw_request_cwd"])
     }
 
+    // MARK: - Launching
+
+    struct Launch {
+        let profile: LaunchProfile
+        let executable: String
+    }
+
+    /// One CLI in a new window, with its AgentWorld sidebar on the right
+    /// (not for the plain terminal). `typing` is pre-filled into its prompt
+    /// once it has started, without pressing enter. Returns the CLI's pane id.
+    @discardableResult
+    func launch(_ launch: Launch, in directory: String, typing: String? = nil) throws -> String {
+        let (command, sessionId) = Self.command(for: launch)
+        let pane = try tmux(["new-window", "-P", "-F", "#{pane_id}", "-n", windowName([launch], directory), "-c", directory] + env(launch) + [command])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        tag(pane, launch, directory: directory, sessionId: sessionId)
+
+        if launch.profile.provider.isAgent {
+            var arguments = ["--provider", launch.profile.provider.id, "--cwd", directory]
+            if let sessionId { arguments += ["--session-id", sessionId] }
+            let sidebar = ([sidebarBinary] + arguments).map(Self.shellQuote).joined(separator: " ")
+            if let sidebarPane = try? tmux(["split-window", "-h", "-d", "-P", "-F", "#{pane_id}", "-t", pane, "-l", sidebarWidth, "-c", directory, sidebar])
+                .trimmingCharacters(in: .whitespacesAndNewlines) {
+                setPaneOptions(sidebarPane, ["@aw_role": "sidebar", "@aw_label": "AgentWorld · \(launch.profile.provider.shortName)"])
+            }
+        }
+        if let typing { typeLater(typing, into: pane) }
+        return pane
+    }
+
+    /// Several CLIs tiled in one new window, side by side.
+    func launchTogether(_ launches: [Launch], in directory: String) throws {
+        guard let first = launches.first else { return }
+        let (command, sessionId) = Self.command(for: first)
+        let firstPane = try tmux(["new-window", "-P", "-F", "#{pane_id}", "-n", windowName(launches, directory), "-c", directory] + env(first) + [command])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        tag(firstPane, first, directory: directory, sessionId: sessionId)
+        for launch in launches.dropFirst() {
+            let (command, sessionId) = Self.command(for: launch)
+            let pane = try tmux(["split-window", "-h", "-d", "-P", "-F", "#{pane_id}", "-t", firstPane, "-c", directory] + env(launch) + [command])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            tag(pane, launch, directory: directory, sessionId: sessionId)
+            // Re-tile after each split so the next one has room.
+            _ = try? tmux(["select-layout", "-t", firstPane, "tiled"])
+        }
+        _ = try? tmux(["select-layout", "-t", firstPane, launches.count <= 3 ? "even-horizontal" : "tiled"])
+        _ = try? tmux(["select-pane", "-t", firstPane])
+    }
+
+    /// The shell command for a CLI pane, and the Claude session id it pins.
+    /// When the CLI exits its pane closes, and the window with it once only
+    /// sidebars are left. A failure (not a Ctrl-C quit, 130) waits so its
+    /// message can be read. `aw_status`, not `status` (read-only in zsh);
+    /// trapping INT (not ignoring it) keeps this shell alive through the
+    /// Ctrl-C that quits the CLI while the CLI still receives it.
+    static func command(for launch: Launch) -> (String, String?) {
+        let provider = launch.profile.provider
+        var arguments = launch.profile.args
+        var sessionId: String?
+        let resumeFlags: Set<String> = ["-c", "--continue", "-r", "--resume", "--session-id", "--fork-session"]
+        if provider.kind == .claude, !arguments.contains(where: { resumeFlags.contains($0.components(separatedBy: "=")[0]) }) {
+            let id = UUID().uuidString.lowercased()
+            sessionId = id
+            arguments = ["--session-id", id] + arguments
+        }
+        let cli = ([launch.executable] + arguments).map(shellQuote).joined(separator: " ")
+        let command = [
+            "trap : INT; \(cli); aw_status=$?;",
+            "if [ $aw_status -ne 0 ] && [ $aw_status -ne 130 ]; then printf '\\n[%s exited with %s, press enter]' \(shellQuote(provider.name)) $aw_status; read _; fi;",
+            "aw_window=$(tmux display-message -p -t \"$TMUX_PANE\" '#{window_id}');",
+            "aw_others=$(tmux list-panes -t \"$aw_window\" -F '#{pane_id} #{@aw_role}' | grep -v \"^$TMUX_PANE \" | grep -c ' cli$');",
+            "if [ \"$aw_others\" -eq 0 ]; then tmux kill-window -t \"$aw_window\"; else tmux kill-pane -t \"$TMUX_PANE\"; fi",
+        ].joined(separator: " ")
+        return (command, sessionId)
+    }
+
+    private func tag(_ pane: String, _ launch: Launch, directory: String, sessionId: String?) {
+        var options = ["@aw_role": "cli", "@aw_provider": launch.profile.provider.id, "@aw_cwd": directory,
+                       "@aw_started": String(Int(Date().timeIntervalSince1970)),
+                       "@aw_label": launch.profile.isCustom ? launch.profile.name : launch.profile.provider.name]
+        if let sessionId { options["@aw_session"] = sessionId }
+        setPaneOptions(pane, options)
+        // Keep the tab name we chose.
+        _ = try? tmux(["set-option", "-w", "-t", pane, "automatic-rename", "off"])
+    }
+
+    private func setPaneOptions(_ pane: String, _ options: [String: String]) {
+        for (key, value) in options.sorted(by: { $0.key < $1.key }) {
+            _ = try? tmux(["set-option", "-p", "-t", pane, key, value])
+        }
+    }
+
+    private func env(_ launch: Launch) -> [String] {
+        launch.profile.env.sorted { $0.key < $1.key }.flatMap { ["-e", "\($0.key)=\($0.value)"] }
+    }
+
+    private func windowName(_ launches: [Launch], _ directory: String) -> String {
+        let names = launches.map(\.profile.provider.shortName)
+        let who = names.count > 2 ? "\(names[0]) +\(names.count - 1)" : names.joined(separator: "+")
+        return "\(who) · \(URL(fileURLWithPath: directory).lastPathComponent)"
+    }
+
     // MARK: - Actions
 
-    /// Opens a new window: the profile's CLI on the left, its sidebar on the
-    /// right. Returns the new window's id.
-    @discardableResult
-    func launch(_ profile: LaunchProfile, executable: String, in directory: String) throws -> String {
-        guard Self.isInsideTmux else { throw Failure.notInTmux }
-        let provider = profile.provider
-
-        var cliArguments = profile.args
-        var sidebarArguments = ["--provider", provider.id, "--cwd", directory]
-        // Pin Claude sessions so the sidebar follows exactly this conversation.
-        let resumeFlags: Set<String> = ["-c", "--continue", "-r", "--resume", "--session-id", "--fork-session"]
-        if provider.kind == .claude, !cliArguments.contains(where: { resumeFlags.contains($0.components(separatedBy: "=")[0]) }) {
-            let sessionId = UUID().uuidString.lowercased()
-            cliArguments = ["--session-id", sessionId] + cliArguments
-            sidebarArguments += ["--session-id", sessionId]
-        }
-
-        // The window closes with the CLI; a failure waits so its message can be read
-        // (`aw_status`, not `status`: that one is read-only in zsh).
-        let cli = ([executable] + cliArguments).map(Self.shellQuote).joined(separator: " ")
-        let command = """
-        \(cli); aw_status=$?; if [ $aw_status -ne 0 ]; then printf '\\n[%s exited with %s, press enter]' \(Self.shellQuote(provider.name)) $aw_status; read _; fi; tmux kill-window -t "$TMUX_PANE"
-        """
-        let name = "\(provider.shortName) · \(URL(fileURLWithPath: directory).lastPathComponent)"
-
-        var arguments = ["new-window", "-P", "-F", "#{window_id}", "-n", name, "-c", directory]
-        for (key, value) in profile.env.sorted(by: { $0.key < $1.key }) { arguments += ["-e", "\(key)=\(value)"] }
-        arguments.append(command)
-        let windowId = try tmux(arguments).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        for (option, value) in [("@aw_provider", provider.id), ("@aw_cwd", directory), ("@aw_profile", profile.name)] {
-            _ = try? tmux(["set-option", "-w", "-t", windowId, option, value])
-        }
-        _ = try? tmux(["set-option", "-w", "-t", windowId, "automatic-rename", "off"])
-
-        let sidebar = ([sidebarBinary] + sidebarArguments).map(Self.shellQuote).joined(separator: " ")
-        _ = try? tmux(["split-window", "-h", "-d", "-t", windowId, "-l", sidebarWidth, "-c", directory, sidebar])
-        return windowId
+    func focus(_ pane: Pane) {
+        _ = try? tmux(["select-window", "-t", pane.windowId])
+        _ = try? tmux(["select-pane", "-t", pane.id])
     }
 
-    func select(_ window: Window) {
-        _ = try? tmux(["select-window", "-t", window.id])
+    /// Closes a CLI: its whole window when it's the only CLI there.
+    func close(_ pane: Pane) {
+        let others = panes().filter { $0.windowId == pane.windowId && $0.id != pane.id }
+        _ = try? tmux(others.isEmpty ? ["kill-window", "-t", pane.windowId] : ["kill-pane", "-t", pane.id])
     }
 
-    func close(_ window: Window) {
-        _ = try? tmux(["kill-window", "-t", window.id])
+    /// Types into a pane's prompt without pressing enter.
+    func type(_ text: String, into pane: String) {
+        _ = try? tmux(["send-keys", "-t", pane, "-l", text])
+    }
+
+    /// Same, after the CLI has had time to start (typing into a CLI that is
+    /// still booting can get lost).
+    func typeLater(_ text: String, into pane: String, after seconds: Double = 2.5) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep \(seconds); tmux send-keys -t \(Self.shellQuote(pane)) -l \(Self.shellQuote(text))"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+    }
+
+    /// The hub's own window needs no title bar over its single pane.
+    func hideOwnTitleBar() {
+        guard let me = ProcessInfo.processInfo.environment["TMUX_PANE"] else { return }
+        _ = try? tmux(["set-option", "-w", "-t", me, "pane-border-status", "off"])
     }
 
     /// Leaves the hub running in the background.
@@ -150,6 +255,26 @@ struct Workspace {
     static func shellQuote(_ value: String) -> String {
         if !value.isEmpty, value.allSatisfy({ $0.isLetter || $0.isNumber || "-_./=:@%+,".contains($0) }) { return value }
         return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}
+
+/// Which commands are on PATH, re-checked at most every 10 seconds (views
+/// ask every frame).
+enum InstalledCLIs {
+    nonisolated(unsafe) private static var cache: (paths: [String: String], at: Date)?
+
+    static func path(for provider: Provider) -> String? {
+        path(forCommand: provider.command)
+    }
+
+    static func path(forCommand command: String) -> String? {
+        if cache == nil || Date().timeIntervalSince(cache!.at) > 10 {
+            cache = ([:], Date())
+        }
+        if let known = cache?.paths[command] { return known.isEmpty ? nil : known }
+        let found = Provider.locate(command)
+        cache?.paths[command] = found ?? ""
+        return found
     }
 }
 

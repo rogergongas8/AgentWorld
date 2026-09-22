@@ -23,6 +23,9 @@ public struct ProviderScanner: Sendable {
         case .gemini: scanGemini()
         case .kimi: scanGeneric(home: ".kimi", project: ".kimi", mcpFiles: ["mcp.json", "config.json"])
         case .grok: scanGeneric(home: ".grok", project: ".grok", mcpFiles: ["user-settings.json", "settings.json"])
+        case .opencode: scanGeneric(home: ".config/opencode", project: ".opencode", mcpFiles: ["opencode.json"], mcpKey: "mcp")
+        case .cursor: scanGeneric(home: ".cursor", project: ".cursor", mcpFiles: ["mcp.json"])
+        case .terminal: AgentConfiguration(repository: scanRepository())
         }
     }
 
@@ -89,7 +92,8 @@ public struct ProviderScanner: Sendable {
                     description: meta.description,
                     scope: scope,
                     plugin: plugin,
-                    path: url.deletingLastPathComponent().path
+                    path: url.deletingLastPathComponent().path,
+                    category: meta["category"]
                 )
             }
     }
@@ -99,14 +103,28 @@ public struct ProviderScanner: Sendable {
             let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             let meta = FrontMatter.parse(content)
             // Subfolders namespace commands: commands/git/sync.md → git:sync.
-            let relative = url.deletingPathExtension().path.dropFirst(directory.path.count + 1)
             return CommandDefinition(
-                name: meta["name"] ?? relative.replacingOccurrences(of: "/", with: ":"),
+                name: meta["name"] ?? commandName(for: url, in: directory),
                 description: meta.description,
                 scope: scope,
                 plugin: plugin
             )
         }
+    }
+
+    /// `commands/git/ship.md` → `git:ship`. Both sides are resolved with
+    /// realpath(3) first: enumerators may report `/private/var/…` for a
+    /// `/var/…` directory, and Foundation's own resolving strips `/private`.
+    func commandName(for file: URL, in directory: URL) -> String {
+        func resolved(_ url: URL) -> [String] {
+            guard let real = realpath(url.path, nil) else { return url.pathComponents }
+            defer { free(real) }
+            return URL(fileURLWithPath: String(cString: real)).pathComponents
+        }
+        let base = resolved(directory)
+        let parts = resolved(file).dropLast() + [file.deletingPathExtension().lastPathComponent]
+        let relative = parts.starts(with: base) ? Array(parts.dropFirst(base.count)) : [parts.last ?? ""]
+        return relative.joined(separator: ":")
     }
 
     func markdownFiles(in directory: URL, recursive: Bool) -> [URL] {

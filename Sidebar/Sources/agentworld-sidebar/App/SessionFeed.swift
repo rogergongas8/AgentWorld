@@ -29,14 +29,19 @@ final class SessionFeed {
         store = SessionStore()
         tailer.attach(to: file, fromStart: true)
         subagents.attach(toSessionTranscript: file, replayExisting: true)
-        poll()
     }
+
+    /// Still replaying a long transcript.
+    var isCatchingUp: Bool { tailer.isBehind }
 
     func poll() {
         // Main transcript first so subagents exist before their own events land.
-        for line in tailer.poll() {
+        // Capped per call so a long session replays over a few frames.
+        for line in tailer.poll(maxBytes: 1_500_000) {
             for event in parser.parse(line: line) { store.apply(event) }
         }
+        // Subagents wait until the main replay has created them.
+        guard !isCatchingUp else { return }
         subagents.discover()
         for batch in subagents.poll() {
             for line in batch.lines {

@@ -34,7 +34,8 @@ struct CharacterLook {
     }
 
     init(name: String) {
-        let hash = Self.stableHash(name.lowercased())
+        // Mixed so similar names ("ui-reviewer", "sidebar-tester") still differ.
+        let hash = Self.mixed(Self.stableHash(name.lowercased()))
         // Skip the orange band (~0.03-0.1) so nobody is mistaken for Claude.
         let hue = (0.12 + Double(hash % 1000) / 1000 * 0.86).truncatingRemainder(dividingBy: 1)
         body = RGB.hsv(hue, 0.55, 0.9)
@@ -44,6 +45,14 @@ struct CharacterLook {
         accent = RGB.hsv((hue + 0.33).truncatingRemainder(dividingBy: 1), 0.7, 1)
         headgear = Headgear.allCases[Int((hash >> 16) % UInt64(Headgear.allCases.count))]
         face = Face.allCases[Int((hash >> 24) % UInt64(Face.allCases.count))]
+    }
+
+    /// SplitMix64 finalizer: spreads FNV's weak low bits across the word.
+    static func mixed(_ value: UInt64) -> UInt64 {
+        var z = value &+ 0x9E3779B97F4A7C15
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
     }
 
     /// FNV-1a: stable across runs, unlike `Hasher`.

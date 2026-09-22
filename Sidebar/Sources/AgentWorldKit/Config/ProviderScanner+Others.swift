@@ -118,9 +118,8 @@ extension ProviderScanner {
     private func geminiCommands(in directory: URL, scope: ConfigScope, plugin: String? = nil) -> [CommandDefinition] {
         guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else { return [] }
         return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "toml" }.map { url in
-            let relative = url.deletingPathExtension().path.dropFirst(directory.path.count + 1)
             return CommandDefinition(
-                name: relative.replacingOccurrences(of: "/", with: ":"),
+                name: commandName(for: url, in: directory),
                 description: TOMLLite.parse(file: url).value("description"),
                 scope: scope,
                 plugin: plugin
@@ -141,21 +140,24 @@ extension ProviderScanner {
 
     /// CLIs with a `~/.<name>` folder holding `skills/` and JSON files with an
     /// `mcpServers` object — the common denominator most agent CLIs share.
-    func scanGeneric(home homeFolder: String, project projectFolder: String, mcpFiles: [String]) -> AgentConfiguration {
+    func scanGeneric(home homeFolder: String, project projectFolder: String, mcpFiles: [String], mcpKey: String = "mcpServers") -> AgentConfiguration {
         let home = homeURL.appendingPathComponent(homeFolder, isDirectory: true)
         let project = projectURL.appendingPathComponent(projectFolder, isDirectory: true)
 
-        let agents = scanAgents(in: project.appendingPathComponent("agents"), scope: .project)
-            + scanAgents(in: home.appendingPathComponent("agents"), scope: .user)
+        // Singular folder names too (opencode uses agent/ and command/).
+        let agents = ["agents", "agent"].flatMap { name in
+            scanAgents(in: project.appendingPathComponent(name), scope: .project) + scanAgents(in: home.appendingPathComponent(name), scope: .user)
+        }
         let skills = scanSkills(in: project.appendingPathComponent("skills"), scope: .project)
             + scanSkills(in: projectURL.appendingPathComponent(".agents/skills"), scope: .project)
             + scanSkills(in: home.appendingPathComponent("skills"), scope: .user)
-        let commands = scanCommands(in: project.appendingPathComponent("commands"), scope: .project)
-            + scanCommands(in: home.appendingPathComponent("commands"), scope: .user)
+        let commands = ["commands", "command"].flatMap { name in
+            scanCommands(in: project.appendingPathComponent(name), scope: .project) + scanCommands(in: home.appendingPathComponent(name), scope: .user)
+        }
         var servers: [MCPServerDefinition] = []
         for (folder, scope) in [(project, ConfigScope.project), (home, .user)] {
             for file in mcpFiles {
-                servers += mcpServers(in: jsonObject(at: folder.appendingPathComponent(file))?["mcpServers"], scope: scope)
+                servers += mcpServers(in: jsonObject(at: folder.appendingPathComponent(file))?[mcpKey], scope: scope)
             }
         }
         let settings = mcpFiles.lazy.compactMap { jsonObject(at: home.appendingPathComponent($0)) }.first

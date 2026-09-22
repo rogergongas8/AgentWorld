@@ -22,6 +22,8 @@ struct CardSpec {
     let subtitleColor: RGB
     let pose: (_ selected: Bool) -> Pose
     let route: Route
+    /// Colors of the skills it carries, shown as little books on the card.
+    var badges: [RGB] = []
 }
 
 /// A rendered explorer screen: content taller than the pane, scrolled by the
@@ -158,12 +160,29 @@ struct PageBuilder {
             let pose = spec.pose(selected)
             draw { canvas, y in
                 CharacterCard.draw(on: &canvas, x: cardX, y: y, figure: spec.figure, name: spec.name, subtitle: spec.subtitle,
-                                   subtitleColor: spec.subtitleColor, pose: pose, selected: selected)
+                                   subtitleColor: spec.subtitleColor, pose: pose, selected: selected, badges: spec.badges)
             }
             register(x: cardX, y: y, width: cardWidth, height: CharacterCard.height, route: spec.route)
             x += cardWidth + 1
         }
         if !specs.isEmpty { advance(CharacterCard.height) }
+    }
+
+    /// Icon or portrait on the left, title lines on the right.
+    mutating func hero(pixels: PixelCanvas, lines: [StyledLine]) {
+        let rows = max(pixels.height / 2, lines.count)
+        gap()
+        reserve(rows)
+        draw { canvas, y in pixels.render(into: &canvas, column: 1, row: y) }
+        let textX = pixels.width + 3
+        let top = y
+        let width = width
+        draw { canvas, _ in
+            for (index, line) in lines.enumerated() {
+                line.draw(into: &canvas, x: textX, y: top + index + max(0, (pixels.height / 2 - lines.count) / 2), width: width - textX)
+            }
+        }
+        advance(rows)
     }
 
     static func wrap(_ text: String, width: Int) -> [String] {

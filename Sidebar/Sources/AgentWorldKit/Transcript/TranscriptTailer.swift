@@ -18,8 +18,15 @@ public final class TranscriptTailer {
         offset = fromStart ? 0 : Self.size(of: url)
     }
 
-    /// Complete lines written since the last call.
-    public func poll() -> [String] {
+    /// Whether there's more written than has been read (after a capped poll).
+    public var isBehind: Bool {
+        fileURL.map { Self.size(of: $0) > offset } ?? false
+    }
+
+    /// Complete lines written since the last call, reading at most
+    /// `maxBytes` (a long transcript then catches up over several polls
+    /// instead of blocking the first frame).
+    public func poll(maxBytes: Int = .max) -> [String] {
         guard let fileURL else { return [] }
         let size = Self.size(of: fileURL)
         if size < offset {
@@ -30,7 +37,7 @@ public final class TranscriptTailer {
         defer { try? handle.close() }
 
         try? handle.seek(toOffset: offset)
-        let data = (try? handle.readToEnd()) ?? Data()
+        let data = maxBytes == .max ? ((try? handle.readToEnd()) ?? Data()) : ((try? handle.read(upToCount: maxBytes)) ?? Data())
         offset += UInt64(data.count)
         pending.append(data)
 

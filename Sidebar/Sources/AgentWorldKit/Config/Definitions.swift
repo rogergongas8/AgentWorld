@@ -91,14 +91,21 @@ public struct SkillDefinition: Sendable, Hashable {
     public let scope: ConfigScope
     public let plugin: String?
     public let path: String?
+    /// Where it sits on the shelves: the `category:` front matter, else a guess.
+    public let category: SkillCategory
 
-    public init(name: String, description: String? = nil, scope: ConfigScope, plugin: String? = nil, path: String? = nil) {
+    public init(name: String, description: String? = nil, scope: ConfigScope, plugin: String? = nil, path: String? = nil, category: String? = nil) {
         self.name = name
         self.description = description
         self.scope = scope
         self.plugin = plugin
         self.path = path
+        self.category = category.flatMap(SkillCategory.named) ?? SkillCategory.guess(name: name, description: description, plugin: plugin)
     }
+
+    /// One human sentence about what it does (descriptions are often written
+    /// as triggers for the model: "Use this skill whenever…").
+    public var summary: String? { description.map(SkillCategory.summarize) }
 
     /// How to invoke it: `/name`, or `/plugin:name` for plugin skills.
     public var qualifiedName: String { plugin.map { "\($0):\(name)" } ?? name }

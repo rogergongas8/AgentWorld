@@ -131,7 +131,7 @@ struct SidebarView {
             tabs.append((start..<line.width, mode))
         }
         let hint: String = switch viewState.mode {
-        case .explore: explorer.isSearching ? "esc clear" : (compact ? "/ find" : "←→↑↓ ⏎ · / find")
+        case .explore: explorer.isSearching ? "esc clear" : (compact ? "u use · / find" : "⏎ open · u use · / find")
         case .live: "s stage"
         case .activity: "↑↓ scroll"
         }

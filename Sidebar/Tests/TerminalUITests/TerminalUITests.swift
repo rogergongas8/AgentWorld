@@ -15,6 +15,12 @@ import Testing
         #expect(canvas[0, 0] == Cell("▀", Style(fg: red)))
         #expect(canvas[1, 0] == Cell("▄", Style(fg: blue)))
         #expect(canvas[2, 0] == Cell("▀", Style(fg: red, bg: blue)))
+
+        var solid = PixelCanvas(width: 1, height: 2)
+        solid[0, 0] = red
+        solid[0, 1] = red
+        solid.render(into: &canvas, column: 0, row: 0)
+        #expect(canvas[0, 0] == Cell(" ", Style(bg: red)))
     }
 
     @Test func pixelCanvasClipsAndRoundsHeight() {

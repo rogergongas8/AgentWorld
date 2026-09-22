@@ -17,6 +17,8 @@ struct SidebarSnapshot {
     let config: AgentConfiguration
     let connection: Connection
     let projectName: String
+    /// The folder being mapped.
+    let cwd: String
     let now: Date
 }
 

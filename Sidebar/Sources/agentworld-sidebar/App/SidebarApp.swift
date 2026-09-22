@@ -52,7 +52,10 @@ final class SidebarApp {
 
     /// Prints a single frame (after replaying the session so far) and returns.
     func renderOnce() {
-        if followsSessions { feed.locate() }
+        if followsSessions {
+            feed.locate()
+            repeat { feed.poll() } while feed.isCatchingUp
+        }
         let size = options.size ?? Terminal.size()
         let canvas = frame(width: size.columns, height: size.rows, now: Date()).canvas
         let screen = Screen(colorMode: ColorMode.detect()) { Terminal.write($0) }
@@ -102,7 +105,8 @@ final class SidebarApp {
         }
         if now >= nextTranscriptPoll, followsSessions {
             feed.poll()
-            nextTranscriptPoll = now.addingTimeInterval(0.2)
+            // Replaying a long transcript: keep going every frame until caught up.
+            nextTranscriptPoll = feed.isCatchingUp ? now : now.addingTimeInterval(0.2)
         }
         if now >= nextConfigScan {
             config = scanner.scan()
@@ -117,6 +121,7 @@ final class SidebarApp {
             config: config,
             connection: followsSessions ? feed.connection : .configOnly,
             projectName: projectName,
+            cwd: demo?.projectURL.path ?? options.cwd,
             now: now
         )
         return SidebarView(snapshot: snapshot, viewState: viewState, explorer: explorer).render(width: width, height: height)

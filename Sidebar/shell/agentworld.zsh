@@ -109,10 +109,37 @@ claude() {
     tmux attach-session -t "$session_name"
 }
 
-# Open the sidebar by hand, e.g. in another terminal tab next to a running
-# claude, or `agentworld --demo` to see every animation.
+# `agentworld` opens the hub: one terminal per agent CLI (Claude Code, Codex,
+# Gemini, Kimi, Grok…), each with its AgentWorld sidebar, plus a picker to
+# start and switch between them. It runs on its own tmux server, so the
+# terminals keep running when you close the window: `agentworld` again brings
+# them back. With arguments it runs the sidebar directly instead
+# (`agentworld --demo`, `agentworld --provider codex`, `agentworld --help`).
 agentworld() {
     local sidebar_bin
     sidebar_bin=$(whence -p agentworld-sidebar) || { print -u2 "agentworld: agentworld-sidebar not installed"; return 127 }
-    "$sidebar_bin" "$@"
+    if (( $# )); then
+        "$sidebar_bin" "$@"
+        return $?
+    fi
+    command -v tmux >/dev/null 2>&1 || { print -u2 "agentworld: the hub needs tmux (brew install tmux)"; return 1 }
+
+    local conf=~/.config/agentworld/hub.tmux.conf
+    local -a server=(tmux -L agentworld)
+    [[ -f "$conf" ]] && server+=(-f "$conf")
+    if ! "${server[@]}" has-session -t hub 2>/dev/null; then
+        # The server starts from this shell, so every terminal it opens
+        # inherits this environment (PATH, API keys…) without writing it anywhere.
+        "${server[@]}" new-session -d -s hub -n home -c "$PWD" \
+            "${(q)sidebar_bin} --launcher --cwd ${(q)PWD}" || return $?
+    else
+        # Already running: pick up config changes and restart the picker in
+        # this folder with the installed binary (the terminals keep running).
+        [[ -f "$conf" ]] && "${server[@]}" source-file "$conf" >/dev/null 2>&1
+        "${server[@]}" respawn-pane -k -t hub:0.0 -c "$PWD" \
+            "${(q)sidebar_bin} --launcher --cwd ${(q)PWD}" >/dev/null 2>&1
+        "${server[@]}" select-window -t hub:0 >/dev/null 2>&1
+    fi
+    # TMUX= : attaching from inside another tmux would otherwise refuse.
+    TMUX= "${server[@]}" attach-session -t hub
 }

@@ -56,7 +56,11 @@ public struct PixelCanvas: Sendable {
                 case let (nil, bottom?):
                     cell = Cell("▄", Style(fg: bottom))
                 case let (top?, bottom?):
-                    cell = top == bottom ? Cell("█", Style(fg: top)) : Cell("▀", Style(fg: top, bg: bottom))
+                    // Solid cells are a background-colored space, not "█": the
+                    // background fills the whole cell, including the line
+                    // spacing some terminals (Warp…) add, where a glyph leaves
+                    // thin dark stripes across the art.
+                    cell = top == bottom ? Cell(" ", Style(bg: top)) : Cell("▀", Style(fg: top, bg: bottom))
                 }
                 canvas[column + x, row + cellRow] = cell
             }

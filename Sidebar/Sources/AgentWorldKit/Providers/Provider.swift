@@ -4,7 +4,9 @@ import Foundation
 /// Each has its own config layout (read by `ProviderScanner`) and character.
 public struct Provider: Sendable, Hashable, Identifiable {
     public enum Kind: String, CaseIterable, Sendable {
-        case claude, codex, gemini, kimi, grok
+        case claude, codex, gemini, kimi, grok, opencode, cursor
+        /// A plain shell: no agent, just a terminal in the workspace.
+        case terminal
     }
 
     public let kind: Kind
@@ -57,7 +59,32 @@ public struct Provider: Sendable, Hashable, Identifiable {
         followsLiveSessions: false
     )
 
-    public static let all: [Provider] = [.claude, .codex, .gemini, .kimi, .grok]
+    public static let opencode = Provider(
+        kind: .opencode, name: "OpenCode", command: "opencode",
+        tagline: "Open-source coding agent",
+        instructionsFiles: ["AGENTS.md"],
+        installHint: "npm install -g opencode-ai",
+        followsLiveSessions: false
+    )
+    public static let cursor = Provider(
+        kind: .cursor, name: "Cursor Agent", command: "cursor-agent",
+        tagline: "Cursor's agent in the terminal",
+        instructionsFiles: ["AGENTS.md", ".cursorrules"],
+        installHint: "curl https://cursor.com/install -fsS | bash",
+        followsLiveSessions: false
+    )
+    public static let terminal = Provider(
+        kind: .terminal, name: "Terminal", command: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
+        tagline: "A plain shell in this workspace",
+        instructionsFiles: [],
+        installHint: nil,
+        followsLiveSessions: false
+    )
+
+    public static let all: [Provider] = [.claude, .codex, .gemini, .kimi, .grok, .opencode, .cursor, .terminal]
+
+    /// Whether it's an agent CLI (everything but the plain terminal).
+    public var isAgent: Bool { kind != .terminal }
 
     public static func named(_ id: String) -> Provider? {
         all.first { $0.id == id.lowercased() }
@@ -111,8 +138,10 @@ public struct LaunchProfile: Sendable, Hashable, Identifiable {
 
     public static let defaults: [LaunchProfile] = Provider.all.map { LaunchProfile(name: $0.name, provider: $0) }
 
+    /// `~/.config/agentworld/profiles.json`, or `$AGENTWORLD_PROFILES`.
     public static var configURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/agentworld/profiles.json")
+        if let path = ProcessInfo.processInfo.environment["AGENTWORLD_PROFILES"] { return URL(fileURLWithPath: path) }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/agentworld/profiles.json")
     }
 
     /// Defaults followed by the custom profiles in `url`. Malformed entries

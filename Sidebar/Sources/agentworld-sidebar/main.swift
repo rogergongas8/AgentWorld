@@ -6,6 +6,11 @@ do {
         print(Options.usage)
         exit(0)
     }
+    if options.launcher {
+        let hub = HubApp(options: options)
+        if options.once || !Terminal.isInteractive { hub.renderOnce() } else { hub.run() }
+        exit(0)
+    }
     let app = try SidebarApp(options: options)
     if options.once || !Terminal.isInteractive {
         app.renderOnce()

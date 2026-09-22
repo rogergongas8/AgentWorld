@@ -21,6 +21,14 @@ final class Explorer {
     private var pageRows = 0
     private var breadcrumbRow = -1
 
+    /// A short confirmation shown on the breadcrumb row ("typed in Claude").
+    private var flash: (text: String, isError: Bool, until: Date)?
+    /// Provider of the last frame, for what summoning types.
+    private var provider = Provider.claude
+    private var config = AgentConfiguration.empty
+    /// Folder this sidebar maps, where new CLI tabs open.
+    private var cwd = FileManager.default.currentDirectoryPath
+
     private var suggestionCache: (key: Int, config: AgentConfiguration, prompt: [Suggestion], repo: [Suggestion])?
 
     var route: Route { stack[stack.count - 1].route }
@@ -36,7 +44,14 @@ final class Explorer {
     func render(into canvas: inout Canvas, top: Int, rows: Int, width: Int, snapshot: SidebarSnapshot) {
         guard rows > 2 else { return }
         breadcrumbRow = top
-        breadcrumb(width: width, provider: snapshot.provider).draw(into: &canvas, x: 0, y: top, width: width)
+        provider = snapshot.provider
+        config = snapshot.config
+        cwd = snapshot.cwd
+        var crumbs = breadcrumb(width: width, provider: snapshot.provider)
+        if let flash, flash.until > snapshot.now {
+            crumbs = crumbs.trailing(flash.text + " ", .fg(flash.isError ? Theme.warning : Theme.live, bold: true))
+        }
+        crumbs.draw(into: &canvas, x: 0, y: top, width: width)
 
         pageTop = top + 1
         pageRows = rows - 1
@@ -102,6 +117,7 @@ final class Explorer {
         case .escape, .backspace, .character("b"): back()
         case .character("/"): push(.search)
         case .character("g"), .home: home()
+        case .character("u"): summonSelected()
         case .pageUp: focus.page(-1, in: targets, rows: pageRows)
         case .pageDown: focus.page(1, in: targets, rows: pageRows)
         case .end: focus.select(max(0, targets.count - 1))
@@ -157,8 +173,56 @@ final class Explorer {
     private func open() {
         guard focus.selection < targets.count else { return }
         let destination = targets[focus.selection].route
+        if case .summon(let text) = destination { return summon(text) }
+        if case .launch(let id) = destination { return launch(id) }
         guard destination != route else { return }
         push(destination)
+    }
+
+    /// `u` on a card, book or row: type "use it" into the CLI next door.
+    private func summonSelected() {
+        guard focus.selection < targets.count else { return }
+        let target: Summoner.Target
+        switch targets[focus.selection].route {
+        case .summon(let text): return summon(text)
+        case .agent(let name): target = .agent(name)
+        case .skill(let name):
+            let skill = config.skills.first { $0.qualifiedName == name }
+            target = .skill(qualifiedName: name, name: skill?.name ?? name)
+        case .command(let name): target = .command(name)
+        default:
+            flash = ("u summons agents, skills and commands", true, Date().addingTimeInterval(2.5))
+            return
+        }
+        summon(Summoner.text(for: target, provider: provider))
+    }
+
+    /// Opens a CLI in a new hub tab for this folder.
+    private func launch(_ id: String) {
+        guard let provider = Provider.named(id) else { return }
+        guard Workspace.isInsideHub else {
+            flash = ("run `agentworld` to open \(provider.shortName)", true, Date().addingTimeInterval(3.5))
+            return
+        }
+        guard let executable = InstalledCLIs.path(for: provider) else {
+            flash = ("\(provider.command) isn't installed", true, Date().addingTimeInterval(3.5))
+            return
+        }
+        let binary = Bundle.main.executablePath ?? "agentworld-sidebar"
+        do {
+            try Workspace(sidebarBinary: binary).launch(.init(profile: LaunchProfile(name: provider.name, provider: provider), executable: executable), in: cwd)
+            RecentFolders.remember(cwd)
+        } catch {
+            flash = ("\(error)", true, Date().addingTimeInterval(3.5))
+        }
+    }
+
+    private func summon(_ text: String) {
+        if let error = Summoner.type(text) {
+            flash = (error, true, Date().addingTimeInterval(3))
+        } else {
+            flash = ("✓ typed in \(provider.shortName)", false, Date().addingTimeInterval(2.5))
+        }
     }
 
     private func back() {
