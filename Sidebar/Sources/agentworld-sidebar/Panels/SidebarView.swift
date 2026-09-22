@@ -74,7 +74,7 @@ struct SidebarView {
                 .lines(width: contentWidth, maxRows: height - y - footerRows))
         }
 
-        if footerRows > 0 { footer().draw(into: &canvas, x: 0, y: height - 1, width: contentWidth) }
+        if footerRows > 0 { footer(compact: width < 48).draw(into: &canvas, x: 0, y: height - 1, width: contentWidth) }
         return canvas
     }
 
@@ -116,11 +116,13 @@ struct SidebarView {
         return lines
     }
 
-    private func footer() -> StyledLine {
+    /// Compact mode only spells out the selected view's name.
+    private func footer(compact: Bool) -> StyledLine {
         var line = StyledLine(" ")
         for mode in ViewMode.allCases {
             let selected = mode == viewState.mode
-            line.append(" \(mode.rawValue + 1) \(mode.title) ", selected ? Style(fg: Theme.cream, bg: Theme.rule, bold: true) : .fg(Theme.faint))
+            let label = compact && !selected ? "\(mode.rawValue + 1)" : "\(mode.rawValue + 1) \(mode.title)"
+            line.append(" \(label) ", selected ? Style(fg: Theme.cream, bg: Theme.rule, bold: true) : .fg(Theme.faint))
         }
         let hint = viewState.mode == .world ? "s stage" : "↑↓ scroll"
         return line.trailing(hint + " ", .fg(Theme.faint))
