@@ -62,6 +62,18 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.add(UNNotificationRequest(identifier: session.id.uuidString + "-\(Date().timeIntervalSince1970)", content: content, trigger: nil))
     }
 
+    /// A message an agent sent with `agentworld-ctl notify`.
+    func post(title: String, body: String, session: TerminalSession?) {
+        NSApp.requestUserAttention(.informationalRequest)
+        guard let center else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        if let session { content.userInfo = ["session": session.id.uuidString] }
+        center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
     private static func duration(_ seconds: TimeInterval) -> String {
         seconds < 60 ? "\(Int(seconds))s" : seconds < 3600 ? "\(Int(seconds / 60))m" : "\(Int(seconds / 3600))h \(Int(seconds / 60) % 60)m"
     }

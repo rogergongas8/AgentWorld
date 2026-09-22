@@ -13,6 +13,8 @@ struct HeroStage: View {
     var compact = false
 
     private static let maxHelpers = 2
+    /// How long a line from `agentworld-ctl say` stays up.
+    private static let sayingFor: TimeInterval = 120
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.1)) { context in
@@ -44,6 +46,9 @@ struct HeroStage: View {
                         .foregroundStyle(Palette.muted)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                if let saying = session.saying, now.timeIntervalSince(saying.at) < Self.sayingFor {
+                    SpeechBubble(text: saying.text, color: session.provider.swiftColor)
                 }
             }
         }
@@ -127,5 +132,26 @@ struct HeroStage: View {
             text += " · helping: \(shown)\(more)"
         }
         return text
+    }
+}
+
+/// A line the agent said to you, in its color.
+struct SpeechBubble: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: "quote.opening").font(.system(size: 9, weight: .bold)).foregroundStyle(color)
+            Text(text)
+                .font(.mono(11))
+                .foregroundStyle(Palette.cream)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 7).fill(color.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(color.opacity(0.35)))
     }
 }

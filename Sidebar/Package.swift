@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "agentworld-sidebar", targets: ["agentworld-sidebar"]),
         .executable(name: "AgentWorldApp", targets: ["AgentWorldApp"]),
+        .executable(name: "agentworld-ctl", targets: ["agentworld-ctl"]),
     ],
     dependencies: [
         // A real terminal emulator view, for the CLIs inside the app.
@@ -32,6 +33,8 @@ let package = Package(
             name: "AgentWorldApp",
             dependencies: ["AgentWorldKit", "AgentWorldArt", "TerminalUI", .product(name: "SwiftTerm", package: "SwiftTerm")]
         ),
+        // Drives the running app from its terminals (agents opening agents).
+        .executableTarget(name: "agentworld-ctl", dependencies: ["AgentWorldKit"]),
         .testTarget(name: "AgentWorldKitTests", dependencies: ["AgentWorldKit"]),
         .testTarget(name: "TerminalUITests", dependencies: ["TerminalUI"]),
     ]

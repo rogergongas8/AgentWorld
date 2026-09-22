@@ -54,13 +54,13 @@ extension AppModel {
 
     /// Opens another CLI next to the ones already in `tab`.
     @discardableResult
-    func addPane(_ profile: LaunchProfile, to tab: TerminalTab) -> TerminalSession? {
+    func addPane(_ profile: LaunchProfile, to tab: TerminalTab, focus: Bool = true) -> TerminalSession? {
         guard tab.sessions.count < Self.maxPanes, let executable = executable(for: profile) else { return nil }
         let session = TerminalSession(profile: profile, executable: executable, folder: tab.folder)
         tab.sessions.append(session)
         tab.zoomedID = nil
         objectWillChange.send()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { session.focus() }
+        if focus { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { session.focus() } }
         return session
     }
 

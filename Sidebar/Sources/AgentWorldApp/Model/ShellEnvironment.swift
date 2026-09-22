@@ -41,8 +41,13 @@ enum ShellEnvironment {
     }
 
     /// Environment for a terminal inside the app.
-    static func forTerminal() -> [String] {
-        var environment = variables
+    /// `extra` carries the pane's `agentworld-ctl` handles; the app's own
+    /// folder goes first on PATH so `agentworld-ctl` is always there.
+    static func forTerminal(extra: [String: String] = [:]) -> [String] {
+        var environment = variables.merging(extra) { _, new in new }
+        if let tools = Bundle.main.executableURL?.deletingLastPathComponent().path {
+            environment["PATH"] = tools + ":" + (environment["PATH"] ?? "/usr/bin:/bin")
+        }
         environment["TERM"] = "xterm-256color"
         environment["COLORTERM"] = "truecolor"
         environment["TERM_PROGRAM"] = "AgentWorld"

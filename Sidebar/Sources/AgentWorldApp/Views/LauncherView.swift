@@ -64,7 +64,13 @@ struct LauncherView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.bottom, 30)
+
+                if !picking, model.profiles.contains(where: { $0.provider.kind == .claude && model.executable(for: $0) != nil }) {
+                    WorkflowRow(folder: folder)
+                        .frame(maxWidth: 1000)
+                        .padding(.horizontal, 28)
+                }
+                Spacer().frame(height: 30)
             }
             .frame(maxWidth: .infinity)
         }
@@ -89,6 +95,57 @@ struct LauncherView: View {
         } else {
             model.launch(profile, in: folder)
         }
+    }
+}
+
+/// Ways to work with several agents at once. Each opens Claude with the plan
+/// typed; you add the task.
+struct WorkflowRow: View {
+    @EnvironmentObject private var model: AppModel
+    let folder: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionTitle(title: "Workflows · agents working together", color: Palette.agent)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 250, maximum: 320), spacing: 12)], spacing: 12) {
+                ForEach(Workflow.all) { workflow in
+                    WorkflowCard(workflow: workflow) {
+                        guard let claude = model.profiles.first(where: { $0.provider.kind == .claude && !$0.isCustom }) else { return }
+                        model.launch(claude, in: folder, typing: workflow.prompt)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct WorkflowCard: View {
+    let workflow: Workflow
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: workflow.symbol)
+                    .font(.system(size: 16))
+                    .foregroundStyle(Palette.agent)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(workflow.title).font(.mono(13, .semibold)).foregroundStyle(Palette.cream)
+                    Text(workflow.summary).font(.mono(10.5)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(hovering ? Palette.hover : Palette.raised))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(hovering ? Palette.agent.opacity(0.6) : Palette.border))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Opens Claude with this plan typed. Add your task at the end and press return.")
     }
 }
 

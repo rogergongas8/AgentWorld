@@ -50,7 +50,7 @@ final class AppModel: ObservableObject {
     private var configs: [String: (config: AgentConfiguration, at: Date)] = [:]
     private var installed: [String: String?] = [:]
     private var timer: AnyCancellable?
-    private lazy var notifier = Notifier(model: self)
+    private(set) lazy var notifier: Notifier? = Notifier(model: self)
 
     init(folder: String?) {
         let recents = RecentFolders.load()
@@ -77,7 +77,7 @@ final class AppModel: ObservableObject {
         for tab in tabs {
             for session in tab.sessions { session.refresh(now: date) }
         }
-        notifier.update(allSessions, now: date)
+        notifier?.update(allSessions, now: date)
     }
 
     // MARK: - Lookups
@@ -157,9 +157,10 @@ final class AppModel: ObservableObject {
     // MARK: - Launching
 
     @discardableResult
-    func launch(_ profile: LaunchProfile, in folder: String, typing: String? = nil, agentName: String? = nil) -> TerminalSession? {
+    func launch(_ profile: LaunchProfile, in folder: String, typing: String? = nil, submitTyping: Bool = false, agentName: String? = nil) -> TerminalSession? {
         guard let executable = executable(for: profile) else { return nil }
-        let session = TerminalSession(profile: profile, executable: executable, folder: folder, agentName: agentName, typing: typing)
+        let session = TerminalSession(profile: profile, executable: executable, folder: folder, agentName: agentName,
+                                      typing: typing, submitTyping: submitTyping)
         let tab = TerminalTab(folder: folder, sessions: [session])
         tabs.append(tab)
         selectedTabID = tab.id

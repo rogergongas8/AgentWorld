@@ -17,12 +17,16 @@ install_dir="$HOME/Applications"
 
 echo "==> Building (release)"
 swift build -c release --product AgentWorldApp
-binary="$(swift build -c release --show-bin-path)/AgentWorldApp"
+swift build -c release --product agentworld-ctl
+bin_dir="$(swift build -c release --show-bin-path)"
+binary="$bin_dir/AgentWorldApp"
 
 echo "==> Assembling $app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/AgentWorld"
+# On PATH in the app's terminals, so agents can drive the app.
+cp "$bin_dir/agentworld-ctl" "$app/Contents/MacOS/agentworld-ctl"
 
 echo "==> Drawing the icon"
 iconset="$build_dir/AgentWorld.iconset"

@@ -21,6 +21,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     }
 
     let id = UUID()
+    /// Short, stable handle for `agentworld-ctl` ("#3"), in opening order.
+    let number: Int
+    private static var nextNumber = 1
     let profile: LaunchProfile
     let folder: String
     let startedAt = Date()
@@ -34,6 +37,15 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     @Published private(set) var status = Status(text: "starting", tone: .idle)
     /// What the character acts out: the activity, its flavor, and since when.
     @Published private(set) var activity = Activity(status: .idle, flavor: .plain, since: Date())
+
+    /// Something the agent said to you through `agentworld-ctl say`, shown
+    /// on its stage for a while.
+    @Published var saying: Saying?
+
+    struct Saying: Equatable {
+        let text: String
+        let at: Date
+    }
 
     /// Test hook (DebugControl `act`): pretend to be doing something.
     var forcedActivity: (ActorStatus, String?)?
@@ -54,7 +66,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     /// The live Claude transcript, once there is one.
     var store: SessionStore? { feed?.connection == .following ? feed?.store : nil }
 
-    init(profile: LaunchProfile, executable: String, folder: String, agentName: String? = nil, typing: String? = nil) {
+    init(profile: LaunchProfile, executable: String, folder: String, agentName: String? = nil, typing: String? = nil, submitTyping: Bool = false) {
+        number = Self.nextNumber
+        Self.nextNumber += 1
         self.profile = profile
         self.folder = folder
         self.agentName = agentName
@@ -84,13 +98,42 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
             let command = ([executable] + arguments).map(ShellEnvironment.quote).joined(separator: " ")
             args = ["-l", "-i", "-c", "exec " + command]
         }
-        terminal.startProcess(executable: shell, args: args, environment: ShellEnvironment.forTerminal(),
+        let control = ["AGENTWORLD_PANE": "\(number)", "AGENTWORLD_SOCKET": ControlServer.socketPath]
+        terminal.startProcess(executable: shell, args: args, environment: ShellEnvironment.forTerminal(extra: control),
                               execName: "-" + URL(fileURLWithPath: shell).lastPathComponent, currentDirectory: folder)
 
-        if let typing {
-            // Give the CLI a moment to boot before pre-filling its prompt.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.type(typing) }
+        if let typing { sendWhenReady(typing, submit: submitTyping) }
+    }
+
+    /// Waits for the CLI to boot (something on screen, then a quiet moment)
+    /// before typing into it; a prompt typed too early gets lost.
+    func sendWhenReady(_ text: String, submit: Bool) {
+        var last = ""
+        var waited: TimeInterval = 0
+        func check() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, self.health == .running else { return }
+                waited += 0.5
+                let screen = self.screenText(lines: 60)
+                let settled = !screen.isEmpty && screen == last && waited >= 1.5
+                last = screen
+                if settled || waited >= 20 {
+                    if submit { self.send(text, submit: true) } else { self.type(text) }
+                } else {
+                    check()
+                }
+            }
         }
+        check()
+    }
+
+    /// The last `lines` lines of the terminal, as plain text.
+    func screenText(lines: Int) -> String {
+        let text = String(decoding: terminal.getTerminal().getBufferAsData(), as: UTF8.self)
+        var rows = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { String($0).replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) }
+        while rows.last?.isEmpty == true { rows.removeLast() }
+        return rows.suffix(lines).joined(separator: "\n")
     }
 
     /// Types into the prompt without pressing enter, and focuses the terminal.

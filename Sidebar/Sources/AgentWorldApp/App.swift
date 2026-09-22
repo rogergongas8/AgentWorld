@@ -23,7 +23,10 @@ struct AgentWorldApp: App {
         WindowGroup("AgentWorld") {
             RootView()
                 .environmentObject(model)
-                .onAppear { DebugControl.start(model: model) }
+                .onAppear {
+                    DebugControl.start(model: model)
+                    ControlServer.start(model: model)
+                }
                 .frame(minWidth: 980, minHeight: 620)
                 .preferredColorScheme(.dark)
         }
