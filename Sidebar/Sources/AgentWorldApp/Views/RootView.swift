@@ -36,6 +36,13 @@ struct RootView: View {
             }
             .transition(.opacity)
         }
+        if let open = model.openChange {
+            ZStack {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.openChange = nil }
+                DiffSheet(open: open)
+            }
+            .transition(.opacity)
+        }
         if model.showsShortcuts {
             ZStack {
                 Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsShortcuts = false }

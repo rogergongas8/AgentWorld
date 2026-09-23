@@ -62,6 +62,11 @@ final class AppModel: ObservableObject {
     @Published var workspaceInfo: [String: SavedWorkspace] = [:]
     /// Branch and uncommitted changes, by folder.
     @Published var git: [String: GitInfo] = [:]
+    /// Uncommitted changes per workspace, refreshed while you look at one.
+    @Published var changes: [String: WorkspaceChanges] = [:]
+    var changesInFlight: Set<String> = []
+    /// The change whose diff is open over the window.
+    @Published var openChange: OpenChange?
     private var ticks = 0
     /// ⌘/ and ⌘⇧N sheets.
     @Published var showsShortcuts = false
@@ -130,6 +135,13 @@ final class AppModel: ObservableObject {
         ticks += 1
         if ticks % 20 == 0 { saveWorkspaces() }
         if ticks % 60 == 1 { refreshGit() }
+        // The workspace on screen every 2 s, and any other where agents work.
+        if ticks % 4 == 0 {
+            refreshChanges(selectedFolder)
+            for folder in Set(allSessions.filter { $0.status.tone == .busy && $0.folder != selectedFolder }.map(\.folder)) {
+                refreshChanges(folder)
+            }
+        }
     }
 
     /// Replaces the custom launch profiles and writes them to profiles.json.

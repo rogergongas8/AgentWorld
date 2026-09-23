@@ -9,6 +9,7 @@ enum PanelItem: Identifiable {
     case server(MCPServerDefinition)
     case plugin(PluginDefinition)
     case command(CommandDefinition)
+    case change(FileChange)
     case tip(Suggestion)
 
     var id: String {
@@ -18,6 +19,7 @@ enum PanelItem: Identifiable {
         case .server(let server): "mcp:" + server.name + (server.plugin ?? "")
         case .plugin(let plugin): "plugin:" + plugin.name
         case .command(let command): "command:" + command.qualifiedName
+        case .change(let change): "change:" + change.path
         case .tip(let tip): "tip:" + tip.name
         }
     }
@@ -33,6 +35,7 @@ enum PanelItem: Identifiable {
         case .server(let server): haystack = [server.name, server.transport, server.plugin ?? ""].joined(separator: " ")
         case .plugin(let plugin): haystack = [plugin.name, plugin.description ?? ""].joined(separator: " ")
         case .command(let command): haystack = [command.qualifiedName, command.description ?? ""].joined(separator: " ")
+        case .change(let change): haystack = change.path + " " + change.kind.rawValue
         case .tip(let tip): haystack = tip.name + " " + tip.reasons.joined(separator: " ")
         }
         let text = haystack.lowercased()
@@ -54,7 +57,7 @@ enum PanelItem: Identifiable {
 @MainActor
 final class PanelNavigator: ObservableObject {
     enum Section: Int, CaseIterable, Identifiable {
-        case crew, skills, tools, tips
+        case crew, skills, tools, changes, tips
 
         var id: Int { rawValue }
 
@@ -63,6 +66,7 @@ final class PanelNavigator: ObservableObject {
             case .crew: "Crew"
             case .skills: "Skills"
             case .tools: "Tools"
+            case .changes: "Changes"
             case .tips: "Tips"
             }
         }
@@ -72,6 +76,7 @@ final class PanelNavigator: ObservableObject {
             case .crew: "person.3"
             case .skills: "books.vertical"
             case .tools: "powerplug"
+            case .changes: "plusminus"
             case .tips: "sparkles"
             }
         }
@@ -142,6 +147,8 @@ extension AppModel {
             }
         case .tools:
             return config.mcpServers.map(PanelItem.server) + config.plugins.map(PanelItem.plugin) + config.commands.map(PanelItem.command)
+        case .changes:
+            return (changes[selectedFolder]?.files ?? []).map(PanelItem.change)
         case .tips:
             return tips(for: panelSession?.provider.isAgent == true ? panelSession : nil, in: selectedFolder).map(PanelItem.tip)
         }
@@ -208,7 +215,7 @@ extension AppModel {
             switch event.charactersIgnoringModifiers {
             case "/":
                 panel.searching = true
-            case "1", "2", "3", "4":
+            case "1", "2", "3", "4", "5":
                 if let digit = Int(event.charactersIgnoringModifiers ?? ""), let section = PanelNavigator.Section(rawValue: digit - 1) {
                     panel.section = section
                 }
@@ -248,6 +255,10 @@ extension AppModel {
     /// Return on a row: its card (skills, agents) or, for tips, use it.
     /// `u` uses it straight away.
     func activate(_ item: PanelItem, detail: Bool) {
+        if detail, case .change(let change) = item {
+            openDiff(change, in: selectedFolder)
+            return
+        }
         if detail, item.kitItem != nil {
             panel.editing = false
             panel.openDetail = item.id
@@ -274,6 +285,13 @@ extension AppModel {
             case .skill: session.type(panelProvider.kind == .claude ? "/\(tip.name) " : "Use the \(tip.name) skill to ")
             case .command: session.type("/\(tip.name) ")
             }
+        case .change(let change):
+            // The path, relative to the pane's folder, for the prompt you're typing.
+            guard let session, let root = changes[selectedFolder]?.root else { return }
+            leavePanel()
+            let full = URL(fileURLWithPath: root).appendingPathComponent(change.path).path
+            let relative = full.hasPrefix(session.folder + "/") ? String(full.dropFirst(session.folder.count + 1)) : full
+            session.type(relative + " ")
         case .server, .plugin:
             break
         }

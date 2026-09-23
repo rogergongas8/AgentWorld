@@ -100,12 +100,16 @@ struct SectionBar: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(section.title)
-                        if let count = count(section) { Text("\(count)").font(.mono(9.5)).foregroundStyle(Palette.faint) }
+                        // Five sections share 340 points: counts on the one you're in,
+                        // or on all of them while searching, where they say where the matches are.
+                        if selected || !panel.query.isEmpty, let count = count(section) {
+                            Text("\(count)").font(.mono(9.5)).foregroundStyle(count == 0 && !panel.query.isEmpty ? Palette.faint.opacity(0.5) : Palette.faint)
+                        }
                     }
                     .font(.mono(11, selected ? .semibold : .regular))
                     .foregroundStyle(selected ? Palette.cream : Palette.muted)
                     .fixedSize()
-                    .padding(.horizontal, 7)
+                    .padding(.horizontal, 5)
                     .padding(.vertical, 5)
                     .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selected : .clear))
                     .contentShape(Rectangle())
@@ -117,7 +121,13 @@ struct SectionBar: View {
             ChromeButton(symbol: "magnifyingglass", active: panel.searching, help: "Search agents, skills and tools (⌘F, or / in the panel)") {
                 if panel.searching { panel.stopSearching() } else { model.searchPanel() }
             }
-            if panel.section == .crew || panel.section == .skills {
+            if panel.section == .changes, let session, model.changes[model.selectedFolder]?.files.isEmpty == false {
+                ChromeButton(symbol: "checkmark.seal", help: "Ask \(session.label) to review these changes") {
+                    model.leavePanel()
+                    session.type("Review the uncommitted changes in this repository (git diff) and point out bugs or anything to fix before I commit.")
+                }
+            }
+            if panel.section == .crew || panel.section == .skills, panel.query.isEmpty {
                 NewKitItemButton(kind: panel.section == .crew ? "agent" : "skill", session: session, provider: provider,
                                  config: config, isPresented: $panel.creating)
             }
@@ -130,6 +140,7 @@ struct SectionBar: View {
         case .crew: return config.agents.count
         case .skills: return config.skills.count
         case .tools: return config.mcpServers.count + config.plugins.count + config.commands.count
+        case .changes: return model.changes[model.selectedFolder]?.files.count
         case .tips: return nil
         }
     }
@@ -262,6 +273,8 @@ struct PanelRow: View {
             Image(systemName: "puzzlepiece.extension.fill").foregroundStyle(Palette.agent)
         case .command:
             Text("/").font(.mono(16, .bold)).foregroundStyle(Palette.warning)
+        case .change(let change):
+            ChangeBadge(kind: change.kind)
         case .tip:
             Image(systemName: "sparkles").foregroundStyle(Palette.warning)
         }
@@ -274,6 +287,7 @@ struct PanelRow: View {
         case .server(let server): server.name
         case .plugin(let plugin): plugin.name
         case .command(let command): "/" + command.qualifiedName
+        case .change(let change): change.name
         case .tip(let tip):
             switch tip.kind {
             case .agent: "Use the \(tip.name) agent"
@@ -289,6 +303,7 @@ struct PanelRow: View {
         case .server: Palette.mcp
         case .plugin: Palette.agent
         case .command, .tip: Palette.warning
+        case .change(let change): change.kind == .deleted ? Palette.muted : Palette.cream
         }
     }
 
@@ -299,6 +314,8 @@ struct PanelRow: View {
         case .server(let server): server.transport
         case .plugin(let plugin): plugin.version.map { "v" + $0 } ?? ""
         case .command(let command): command.plugin ?? ""
+        case .change(let change): [change.added.map { "+\($0)" }, change.removed.flatMap { $0 > 0 ? "−\($0)" : nil }]
+            .compactMap { $0 }.joined(separator: " ")
         case .tip: ""
         }
     }
@@ -314,6 +331,8 @@ struct PanelRow: View {
         case .server(let server): return "\(provider.shortName) can use its tools · \(server.scope.rawValue)"
         case .plugin(let plugin): return plugin.description ?? pluginContents(plugin)
         case .command(let command): return command.description ?? "a slash command"
+        case .change(let change):
+            return (change.folder.isEmpty ? "" : change.folder + " · ") + change.kind.rawValue
         case .tip(let tip):
             switch tip.kind {
             case .agent: return config.agents.first { $0.qualifiedName == tip.name }?.description.map(SkillCategory.summarize) ?? ""
@@ -325,15 +344,19 @@ struct PanelRow: View {
 
     private var extra: String? {
         switch item {
-        case .agent(let agent): agent.skills.isEmpty ? nil : "carries " + agent.skills.joined(separator: ", ")
-        case .plugin(let plugin): plugin.description == nil ? nil : pluginContents(plugin)
-        case .tip(let tip): "fits: " + tip.reasons.joined(separator: " · ")
-        default: nil
+        case .agent(let agent): return agent.skills.isEmpty ? nil : "carries " + agent.skills.joined(separator: ", ")
+        case .plugin(let plugin): return plugin.description == nil ? nil : pluginContents(plugin)
+        case .tip(let tip): return "fits: " + tip.reasons.joined(separator: " · ")
+        case .change(let change):
+            let who = model.sessions(touching: change.path, in: model.selectedFolder).map(\.label)
+            return who.isEmpty ? nil : "by " + who.joined(separator: ", ")
+        default: return nil
         }
     }
 
     private var extraColor: Color {
         if case .agent = item { return Palette.skill }
+        if case .change = item { return Palette.agent }
         return Palette.faint
     }
 
@@ -351,6 +374,7 @@ struct PanelRow: View {
         case .agent, .skill: "Click (or ↩) for its card: what it does, use it, change it."
         case .tip: "Click to type it into the terminal."
         case .command: "Click to type it into the terminal."
+        case .change: "Click (or ↩) for its diff; u types its path into the terminal."
         case .server: "An MCP server: tools from another service the CLI can call."
         case .plugin: "A plugin: a bundle of skills, agents, commands or servers."
         }
@@ -374,6 +398,7 @@ struct EmptySection: View {
         case .crew: "No agents yet. \"+ New\" describes one and \(provider.shortName) writes it."
         case .skills: "No skills yet. \"+ New\" describes one and \(provider.shortName) writes it."
         case .tools: "No MCP servers, plugins or commands for \(provider.shortName) here."
+        case .changes: "No uncommitted changes. What your agents edit shows up here, with who did it."
         case .tips: "Tips show up as you work: they follow what you ask."
         }
     }
@@ -394,12 +419,11 @@ struct KeyHintBar: View {
                 hint("↩", "open")
                 hint("esc", "clear")
             } else if panel.isFocused {
+                // The rest (e, n, 1-5) are on the ⌘/ sheet.
                 hint("↑↓", "move")
-                hint("/", "search")
                 hint("↩", "open")
                 hint("u", "use")
-                hint("e", "edit")
-                hint("n", "new")
+                hint("/", "search")
                 hint("esc", "back")
             } else {
                 Button {
@@ -430,7 +454,7 @@ struct KeyHintBar: View {
                 .padding(.vertical, 1)
                 .background(RoundedRectangle(cornerRadius: 3).fill(Palette.raised))
                 .overlay(RoundedRectangle(cornerRadius: 3).stroke(Palette.border))
-            Text(label).font(.mono(9.5)).foregroundStyle(Palette.muted)
+            Text(label).font(.mono(9.5)).foregroundStyle(Palette.muted).fixedSize()
         }
     }
 }
