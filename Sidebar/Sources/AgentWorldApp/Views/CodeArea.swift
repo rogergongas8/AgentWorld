@@ -82,6 +82,7 @@ struct TabStrip: View {
                     AddPaneMenu(tab: tab)
                     Rectangle().fill(Palette.border).frame(width: 1, height: 16).padding(.horizontal, 4)
                 }
+                UsageButton()
                 RunningSummary().padding(.trailing, 6)
                 ChromeButton(symbol: "sidebar.right", active: model.showsInspector, help: "Show or hide agents, skills and tips (⌥⌘I)") {
                     model.showsInspector.toggle()

@@ -65,6 +65,10 @@ final class AppModel: ObservableObject {
     /// Uncommitted changes per workspace, refreshed while you look at one.
     @Published var changes: [String: WorkspaceChanges] = [:]
     var changesInFlight: Set<String> = []
+    /// Tokens by CLI and day, refreshed every 30 s.
+    @Published var usage: UsageSummary?
+    let usageLedger = UsageLedger()
+    var usageInFlight = false
     /// The change whose diff is open over the window.
     @Published var openChange: OpenChange?
     private var ticks = 0
@@ -135,6 +139,7 @@ final class AppModel: ObservableObject {
         ticks += 1
         if ticks % 20 == 0 { saveWorkspaces() }
         if ticks % 60 == 1 { refreshGit() }
+        if ticks % 60 == 3 { refreshUsage() }
         // The workspace on screen every 2 s, and any other where agents work.
         if ticks % 4 == 0 {
             refreshChanges(selectedFolder)

@@ -32,6 +32,15 @@ enum DebugControl {
             switch parts.first {
             case "snapshot": snapshot(to: argument)
             case "panel": model.enterPanel()
+            case "render-usage":
+                // render-usage <png>: the usage popover, drawn offscreen.
+                if let usage = model.usage {
+                    let renderer = ImageRenderer(content: UsagePopover(usage: usage).environmentObject(model))
+                    renderer.scale = 2
+                    if let image = renderer.nsImage, let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) {
+                        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
+                    }
+                }
             case "keys":
                 // keys <text>: typed through the key router; {esc} {bs} {down} {up} {ret} {tab} for the rest.
                 keys(argument, model: model)
