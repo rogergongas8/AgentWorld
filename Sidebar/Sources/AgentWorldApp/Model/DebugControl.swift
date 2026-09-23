@@ -33,6 +33,8 @@ enum DebugControl {
             case "snapshot": snapshot(to: argument)
             case "panel": model.enterPanel()
             case "commit": model.showsCommit = true
+            case "resume": model.resume(in: model.selectedFolder)
+            case "rename-tab": model.selectedTab?.customTitle = argument.isEmpty ? nil : argument
             case "render-usage":
                 // render-usage <png>: the usage popover, drawn offscreen.
                 if let usage = model.usage {

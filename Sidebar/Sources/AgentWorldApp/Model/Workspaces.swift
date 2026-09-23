@@ -24,6 +24,11 @@ struct SavedPane: Codable, Equatable {
     /// (`claude --resume <id>`, `codex resume <id>`).
     var resumeID: String?
     var agentName: String?
+    /// Which of the workspace's tabs it was in (older files: all in one).
+    var tab: Int?
+    /// That tab's name, if you gave it one, and how its panes were laid out.
+    var tabTitle: String?
+    var tabLayout: String?
 }
 
 /// `~/.config/agentworld/workspaces.json` (or `$AGENTWORLD_WORKSPACES`, so
@@ -170,12 +175,13 @@ extension AppModel {
     func saveWorkspaces() {
         let saved = folders.map { path -> SavedWorkspace in
             var workspace = workspaceInfo[path] ?? SavedWorkspace(path: path)
-            let open = tabs(in: path).flatMap(\.sessions).filter { $0.health == .running }
-            if !open.isEmpty {
-                workspace.panes = open.map {
-                    SavedPane(profile: $0.profile.name, resumeID: $0.resumeID, agentName: $0.agentName)
+            let open = tabs(in: path).enumerated().flatMap { index, tab in
+                tab.sessions.filter { $0.health == .running }.map { session in
+                    SavedPane(profile: session.profile.name, resumeID: session.resumeID, agentName: session.agentName,
+                              tab: index, tabTitle: tab.customTitle, tabLayout: tab.layout.rawValue)
                 }
             }
+            if !open.isEmpty { workspace.panes = open }
             return workspace
         }
         WorkspaceFile.save(saved)
@@ -210,19 +216,34 @@ extension AppModel {
         return workspaceInfo[folder]?.panes ?? []
     }
 
-    /// Reopens last time's panes, tiled in one tab; each CLI that can resume
-    /// a conversation (Claude Code, Codex) picks it up where it was.
+    /// Reopens last time's tabs, with their names and layouts; each CLI that
+    /// can resume a conversation (Claude Code, Codex) picks it up where it was.
     func resume(in folder: String) {
-        let panes = resumablePanes(in: folder).prefix(Self.maxPanes)
-        let sessions = panes.compactMap { pane -> TerminalSession? in
-            guard let profile = profiles.first(where: { $0.name == pane.profile }), let executable = executable(for: profile) else { return nil }
-            return TerminalSession(profile: profile, executable: executable, folder: folder, agentName: pane.agentName,
-                                   resumeID: pane.resumeID)
+        let panes = resumablePanes(in: folder)
+        var order: [Int] = []
+        var groups: [Int: [SavedPane]] = [:]
+        for pane in panes {
+            let index = pane.tab ?? 0
+            if groups[index] == nil { order.append(index) }
+            groups[index, default: []].append(pane)
         }
-        guard !sessions.isEmpty else { return }
-        let tab = TerminalTab(folder: folder, sessions: sessions)
-        tabs.append(tab)
-        selectedTabID = tab.id
+        var first: TerminalTab?
+        for index in order {
+            let group = groups[index] ?? []
+            let sessions = group.prefix(Self.maxPanes).compactMap { pane -> TerminalSession? in
+                guard let profile = profiles.first(where: { $0.name == pane.profile }), let executable = executable(for: profile) else { return nil }
+                return TerminalSession(profile: profile, executable: executable, folder: folder, agentName: pane.agentName,
+                                       resumeID: pane.resumeID)
+            }
+            guard !sessions.isEmpty else { continue }
+            let tab = TerminalTab(folder: folder, sessions: sessions)
+            tab.customTitle = group.first?.tabTitle
+            if let layout = group.first?.tabLayout.flatMap(TileLayout.init(rawValue:)) { tab.layout = layout }
+            tabs.append(tab)
+            first = first ?? tab
+        }
+        guard let first else { return }
+        selectedTabID = first.id
         showsLauncher = false
     }
 
