@@ -26,19 +26,20 @@ using each CLI's own features rather than Claude-only logic.
 - **Usage**: tokens today in the title bar; by CLI, day and session in its
   popover (Claude, Codex with its plan window, Gemini).
 - **agentworld skill for every CLI** that's set up (skills folder of each).
+- **Commit from the app** (⌘⇧C): your message or the agent writes it; push.
+- **Exact attribution** from Claude's Edit/Write calls, surviving relaunches.
+- **Resume tab by tab**, with names and layouts.
+- **Grid button** on the home screen: hover 3×3 boxes, open that many tiled
+  (up to 9 panes per tab).
 
 ## Next
 
-1. **Commit from the app**: a message box under Changes (or ask the agent
-   to write it), commit and push, with the branch in the title.
-2. **Cost next to tokens**, opt-in, from a price table you can edit (API
+1. **Cost next to tokens**, opt-in, from a price table you can edit (API
    users); subscriptions keep tokens only.
-3. **Attribution that survives a relaunch**: keep who-touched-what per
-   workspace in `workspaces.json`, and read Claude's Edit/Write tool calls
-   for exact files when they're there.
-4. **Tabs remembered with their names**, and dragging a tab onto another
-   to merge them into one tiled tab.
-5. **Full screen**: without the traffic lights, drop their reserved space.
+2. **Drag a tab onto another** to merge them into one tiled tab, and a pane
+   out to its own tab.
+3. **Timing-based attribution that survives a relaunch** for CLIs without a
+   transcript of their edits (keep it in `workspaces.json`).
 
 ## To verify by hand
 
@@ -46,6 +47,7 @@ These run in their own windows or need real input, which the debug
 snapshots can't capture:
 
 - Dragging tabs to reorder, and right-click › Rename.
+- The Grid button's hover picker, and typing a commit message in its sheet.
 - The right panel with the mouse: hover and clicks on rows (the flicker
   fix), popover cards.
 - Skill/agent detail cards opened with ↩ / `e`, and the "+ New" card (`n`).
