@@ -119,9 +119,9 @@ claude() {
 agentworld() {
     # `agentworld app`: the macOS app, opened on this folder.
     if [[ "$1" == app ]]; then
-        local bundle=~/Applications/AgentWorld.app
-        [[ -d "$bundle" ]] || { print -u2 "agentworld: the app isn't installed (Sidebar: make app)"; return 1 }
-        open -a "$bundle" --args --cwd "$PWD"
+        # By bundle id: found in /Applications or ~/Applications alike.
+        open -b dev.agentworld.app --args --cwd "$PWD" 2>/dev/null \
+            || { print -u2 "agentworld: the app isn't installed (Sidebar: make app)"; return 1 }
         return
     fi
     local sidebar_bin

@@ -20,6 +20,6 @@ install:
 uninstall:
 	./scripts/uninstall.sh
 
-# The macOS app, built, bundled and installed to ~/Applications.
+# The macOS app, built, bundled and installed to /Applications (~/Applications if not writable).
 app:
 	./scripts/build-app.sh

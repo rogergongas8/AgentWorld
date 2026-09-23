@@ -70,6 +70,7 @@ struct WelcomeWorkspaces: View {
                 Button { model.showsNewProject = true } label: { Label("New project or clone…", systemImage: "plus.square.on.square") }
             }
             .controlSize(.large)
+            MakeItYours().padding(.top, 8)
             if !suggestions.isEmpty {
                 Text("Where your CLIs have worked before")
                     .font(.mono(10.5, .semibold))
@@ -85,6 +86,74 @@ struct WelcomeWorkspaces: View {
         .task {
             let found = await Task.detached(priority: .utility) { CLIHistory.recentFolders() }.value
             suggestions = found.filter { !model.folders.contains($0.path) }
+        }
+    }
+}
+
+/// First run: the few things that make it feel like any other Mac app.
+struct MakeItYours: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject private var preferences = Preferences.shared
+    @State private var inDock = MacIntegration.isInDock
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Make it yours")
+                .font(.mono(10.5, .semibold))
+                .foregroundStyle(Palette.cream)
+            HStack(alignment: .top, spacing: 10) {
+                card(symbol: "dock.rectangle", title: "Keep it in the Dock", done: inDock,
+                     text: inDock ? "It's there: one click away." : "Right-click its Dock icon › Options › Keep in Dock.")
+                card(symbol: "power", title: "Open at login", done: preferences.canStartAtLogin && preferences.startsAtLogin,
+                     text: preferences.canStartAtLogin ? "Your agents' workspaces, ready when you log in." : "Needs the installed app (make app).") {
+                    Toggle("", isOn: Binding(get: { preferences.startsAtLogin }, set: { preferences.startsAtLogin = $0 }))
+                        .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                        .disabled(!preferences.canStartAtLogin)
+                }
+                card(symbol: "gearshape", title: "Settings", done: false, text: "Font, notifications, which CLIs, launch profiles.") {
+                    Button("Open  ⌘,") { model.openSettings() }.controlSize(.small)
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            inDock = MacIntegration.isInDock
+        }
+    }
+
+    private func card(symbol: String, title: String, done: Bool, text: String) -> some View {
+        card(symbol: symbol, title: title, done: done, text: text) { EmptyView() }
+    }
+
+    private func card<Accessory: View>(symbol: String, title: String, done: Bool, text: String,
+                                       @ViewBuilder accessory: () -> Accessory) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Image(systemName: done ? "checkmark.circle.fill" : symbol)
+                    .foregroundStyle(done ? Palette.live : Palette.claude)
+                Text(title).font(.mono(11.5, .semibold)).foregroundStyle(Palette.cream)
+                Spacer(minLength: 4)
+                accessory()
+            }
+            Text(text).font(.mono(10)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.raised))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(done ? Palette.live.opacity(0.4) : Palette.border))
+    }
+}
+
+/// Where the app sits in macOS.
+enum MacIntegration {
+    /// Kept in the Dock: the Dock's own list names this bundle.
+    static var isInDock: Bool {
+        guard Bundle.main.bundleIdentifier != nil,
+              let apps = UserDefaults(suiteName: "com.apple.dock")?.array(forKey: "persistent-apps") as? [[String: Any]] else { return false }
+        let path = Bundle.main.bundleURL.standardizedFileURL.path
+        return apps.contains { app in
+            guard let tile = app["tile-data"] as? [String: Any], let file = tile["file-data"] as? [String: Any],
+                  let url = (file["_CFURLString"] as? String).flatMap(URL.init(string:)) else { return false }
+            return url.standardizedFileURL.path == path || (tile["bundle-identifier"] as? String) == Bundle.main.bundleIdentifier
         }
     }
 }

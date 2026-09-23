@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Builds AgentWorld.app (the macOS app: workspaces, agents and real
-# terminals in one window) and installs it to ~/Applications.
+# terminals in one window) and installs it to /Applications (or
+# ~/Applications when /Applications isn't writable).
 #
 #   ./scripts/build-app.sh            build + install
+#   ./scripts/build-app.sh --user     install to ~/Applications
 #   ./scripts/build-app.sh --no-install   just build into .build/app/
 #
 # The bundle is signed ad hoc (fine for your own Mac). Distributing it needs
@@ -13,7 +15,11 @@ cd "$(dirname "$0")/.."
 version="0.1.0"
 build_dir=".build/app"
 app="$build_dir/AgentWorld.app"
-install_dir="$HOME/Applications"
+if [[ "${1:-}" != "--user" && -w /Applications ]]; then
+    install_dir="/Applications"
+else
+    install_dir="$HOME/Applications"
+fi
 
 echo "==> Building (release)"
 swift build -c release --product AgentWorldApp
@@ -51,6 +57,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+    <key>NSHumanReadableCopyright</key><string>Your agent CLIs, side by side.</string>
 </dict>
 </plist>
 PLIST
@@ -70,6 +77,13 @@ if pgrep -x AgentWorld >/dev/null; then
 fi
 rm -rf "$install_dir/AgentWorld.app"
 cp -R "$app" "$install_dir/"
+# One AgentWorld only: drop a copy an older version left in the other place.
+for other in "/Applications/AgentWorld.app" "$HOME/Applications/AgentWorld.app"; do
+    if [[ "$other" != "$install_dir/AgentWorld.app" && -d "$other" && -f "$other/Contents/MacOS/agentworld-ctl" ]]; then
+        echo "    (removing the older copy in $(dirname "$other"))"
+        rm -rf "$other"
+    fi
+done
 # So Spotlight and Launchpad open this build (not an older one with the same name).
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$install_dir/AgentWorld.app"
 

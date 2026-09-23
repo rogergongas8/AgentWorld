@@ -26,11 +26,13 @@ struct SavedPane: Codable, Equatable {
     var agentName: String?
 }
 
-/// `~/.config/agentworld/workspaces.json`, with the old recent-folders list
+/// `~/.config/agentworld/workspaces.json` (or `$AGENTWORLD_WORKSPACES`, so
+/// test runs keep their hands off yours), with the old recent-folders list
 /// folded in the first time.
 enum WorkspaceFile {
     static var url: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/agentworld/workspaces.json")
+        if let path = ProcessInfo.processInfo.environment["AGENTWORLD_WORKSPACES"] { return URL(fileURLWithPath: path) }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/agentworld/workspaces.json")
     }
 
     static func load() -> [SavedWorkspace] {
