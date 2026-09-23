@@ -1,7 +1,7 @@
 ---
 name: add-provider
 category: code
-description: Checklist for adding a new agent CLI (e.g. opencode, aider, a new Grok or Kimi release) to AgentWorld as a first-class provider — launchable from the hub with its own character and a sidebar that reads its skills, MCP servers, commands and plugins. Use when asked to support another CLI or to fix how an existing CLI's config is read.
+description: Checklist for adding a new agent CLI (e.g. opencode, aider, a new Grok or Kimi release) to AgentWorld as a first-class provider — launchable from the app with its own character and a panel that reads its skills, MCP servers, commands and plugins. Use when asked to support another CLI or to fix how an existing CLI's config is read.
 ---
 
 # Add a provider
@@ -37,7 +37,7 @@ big unknown.
 - Always include `.agents/skills` in the project, and pass
   `repository: scanRepository()`.
 
-## 4. Look — `Sidebar/Sources/agentworld-sidebar/World/ProviderLook.swift`
+## 4. Look — `Sidebar/Sources/AgentWorldArt/ProviderLook.swift`
 
 Add `shortName`, `color` and a `figure`. See the `pixel-character` skill:
 plain colors and headgear, no logos; check the name stays readable.
@@ -49,5 +49,5 @@ handles and assert on the resulting `AgentConfiguration`. Run `swift test`.
 
 ## 6. Verify and document
 
-- `terminal-snapshot` with `-- --provider <id>` and `--size 130x50 -- --launcher`.
-- Add a row to the "What each sidebar reads" table in `Sidebar/README.md`.
+- `app-snapshot`: the launcher card and a pane of it with the panel open.
+- Mention it in `Sidebar/README.md` if it reads something new (usage, a config file).

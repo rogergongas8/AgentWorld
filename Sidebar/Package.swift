@@ -2,10 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "AgentWorldSidebar",
+    name: "AgentWorld",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "agentworld-sidebar", targets: ["agentworld-sidebar"]),
         .executable(name: "AgentWorldApp", targets: ["AgentWorldApp"]),
         .executable(name: "agentworld-ctl", targets: ["agentworld-ctl"]),
     ],
@@ -14,20 +13,15 @@ let package = Package(
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.20.0"),
     ],
     targets: [
-        // Pure model layer: reads Claude Code's config + live transcripts and
-        // folds them into a `SessionStore`. No terminal code in here.
+        // Pure model layer: reads each CLI's config, live transcripts, git and
+        // the project's files. No UI code in here.
         .target(name: "AgentWorldKit"),
-        // Terminal primitives: cell canvas, pixel (half-block) canvas, colors,
-        // diffing screen presenter, raw-mode input. Knows nothing about Claude.
+        // Pixel canvas and colors the characters are drawn with (born in the
+        // old terminal sidebar; the app draws the canvases as images).
         .target(name: "TerminalUI"),
         // The pixel characters, their looks and poses, colors and formatting,
-        // shared by the terminal sidebar and the macOS app.
+        // for the app.
         .target(name: "AgentWorldArt", dependencies: ["AgentWorldKit", "TerminalUI"]),
-        // The sidebar itself: the animated stage + panels, wired to the above.
-        .executableTarget(
-            name: "agentworld-sidebar",
-            dependencies: ["AgentWorldKit", "TerminalUI", "AgentWorldArt"]
-        ),
         // The macOS app: workspaces, agents and real terminals in one window.
         .executableTarget(
             name: "AgentWorldApp",

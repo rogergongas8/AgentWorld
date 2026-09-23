@@ -37,5 +37,5 @@ energy, z's, stars…). `seed` desynchronizes characters. Selected cards use
 3. Keep props inside the figure's box plus a few pixels (`Figure` gives the
    rect); anything outside the card is clipped.
 4. New status → map it in `Animator.pose` and in `Theme.color/glyph(for:)`.
-5. Look at it: `terminal-snapshot` on the explorer home (cards) and the
-   `--demo` live view (stage), at 56 and 40 columns.
+5. Look at it with `app-snapshot`: the launcher cards, the panel's stage
+   (use `act` to put a pane in each status) and the live crew.

@@ -1,6 +1,6 @@
 ---
 name: release-check
-description: Pre-release checklist for AgentWorld — build in release mode, run the test suites, smoke-test the hub and the sidebar, and reinstall. Use before committing a user-facing change, tagging a version, or when asked whether the project is ready to ship. Works from any agent CLI (this skill lives in .agents/skills).
+description: Pre-release checklist for AgentWorld — run the test suites, build the app in release mode, smoke-test it and reinstall. Use before committing a user-facing change, tagging a version, or when asked whether the project is ready to ship. Works from any agent CLI (this skill lives in .agents/skills).
 ---
 
 # Release check
@@ -8,11 +8,11 @@ description: Pre-release checklist for AgentWorld — build in release mode, run
 Run from the repo root; stop at the first failure and report it with its output.
 
 1. **Tests**: `cd Sidebar && swift test` — all suites must pass.
-2. **Release build**: `swift build -c release --product agentworld-sidebar`, no warnings in our sources.
-3. **Sidebar smoke test**: `.build/release/agentworld-sidebar --once --size 56x40 --cwd ..` prints a frame
-   without crashing; repeat with `--provider codex` and `--demo`.
-4. **Hub smoke test**: `.build/release/agentworld-sidebar --launcher --once --size 130x50 --cwd ..`
-   shows the NEW TERMINAL cards for every provider.
-5. **Shell integration**: `zsh -n shell/agentworld.zsh`.
-6. **Docs**: new flags, keys, providers or settings are in `Sidebar/README.md`.
-7. **Install**: `./scripts/install.sh`, then tell the user to open a new terminal.
+2. **Release build**: `swift build -c release --product AgentWorldApp` and
+   `--product agentworld-ctl`, no warnings in our sources.
+3. **Smoke test**: the debug app driven as the `app-snapshot` skill shows
+   (`.claude/skills/app-snapshot/SKILL.md`): launcher, a Terminal pane, ⌘K,
+   the map, Settings — captured and looked at.
+4. **Docs**: new keys, settings, commands or providers are in `Sidebar/README.md`
+   and `Sidebar/ROADMAP.md`.
+5. **Install**: `make app` (from `Sidebar/`), then tell the user to reopen AgentWorld.
