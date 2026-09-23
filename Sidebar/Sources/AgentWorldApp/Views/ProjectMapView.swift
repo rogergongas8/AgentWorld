@@ -19,6 +19,11 @@ struct ProjectMapView: View {
     @State private var selected: Int?
     @State private var search = ""
     @FocusState private var searching: Bool
+    /// ⇧-click a second file: the shortest chain of links between the two.
+    @State private var pathEnd: Int?
+    /// Dots colored by the clusters the links form, or by folder.
+    @AppStorage("mapColorBy") private var colorBy = "clusters"
+    @AppStorage("mapInsights") private var showsInsights = true
 
     /// The guide's eight categorical hues, dark steps, in fixed order; more
     /// folders than that share gray ("other").
@@ -35,6 +40,9 @@ struct ProjectMapView: View {
                     if let map = model.projectMap, map.folder == model.selectedFolder {
                         canvas(map)
                         legend(map).padding(12)
+                        if showsInsights {
+                            insights(map).padding(12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
                     } else {
                         VStack(spacing: 10) {
                             ProgressView().controlSize(.small)
@@ -54,12 +62,16 @@ struct ProjectMapView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
         .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
         .onExitCommand {
-            if selected != nil { selected = nil } else { model.showsMap = false }
+            if pathEnd != nil { pathEnd = nil } else if selected != nil { selected = nil } else { model.showsMap = false }
         }
         .onReceive(model.$mapFocus.combineLatest(model.$projectMap.map { $0?.folder })) { path, _ in
-            guard let path, let map = model.projectMap,
-                  let index = map.graph.nodes.firstIndex(where: { $0.path == path || $0.path.hasSuffix("/" + path) }) else { return }
+            // "A" selects A; "A>B" also shows the way from A to B.
+            guard let path, let map = model.projectMap else { return }
+            func find(_ name: String) -> Int? { map.graph.nodes.firstIndex { $0.path == name || $0.path.hasSuffix("/" + name) } }
+            let parts = path.components(separatedBy: ">")
+            guard let index = find(parts[0]) else { return }
             selected = index
+            pathEnd = parts.count > 1 ? find(parts[1]) : nil
             model.mapFocus = nil
         }
     }
@@ -75,6 +87,15 @@ struct ProjectMapView: View {
                     .font(.mono(11)).foregroundStyle(Palette.muted)
             }
             Spacer()
+            Picker("Color by", selection: $colorBy) {
+                Text("Clusters").tag("clusters")
+                Text("Folders").tag("folders")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 170)
+            .help("Color the files by the clusters their links form, or by the folder they're in")
+            ChromeButton(symbol: "lightbulb", active: showsInsights, help: "Hubs and surprising links") { showsInsights.toggle() }
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Palette.muted)
                 TextField("Find a file", text: $search)
@@ -110,7 +131,9 @@ struct ProjectMapView: View {
         return GeometryReader { geometry in
             let transform = Transform(bounds: map.bounds, size: geometry.size, zoom: zoom, pan: pan)
             let focus = selected ?? hovered
-            let neighbors = focus.map { Set(map.uses[$0] + map.usedBy[$0] + [$0]) }
+            let route = routeNodes(map)
+            let routeLinks = Set(zip(route, route.dropFirst()).flatMap { [[$0, $1], [$1, $0]] })
+            let neighbors = route.isEmpty ? focus.map { Set(map.uses[$0] + map.usedBy[$0] + [$0]) } : Set(route)
             TimelineView(.animation(minimumInterval: 1 / 15, paused: touched.isEmpty)) { context in
                 let pulse = 0.5 + 0.5 * sin(context.date.timeIntervalSinceReferenceDate * 3)
                 Canvas { graphics, _ in
@@ -120,6 +143,12 @@ struct ProjectMapView: View {
                         var path = Path()
                         path.move(to: a)
                         path.addLine(to: b)
+                        if !routeLinks.isEmpty {
+                            let onRoute = routeLinks.contains([edge.from, edge.to])
+                            graphics.stroke(path, with: .color((onRoute ? Palette.cream : Palette.muted).opacity(onRoute ? 0.95 : 0.04)),
+                                            lineWidth: onRoute ? 2.4 : 0.7)
+                            continue
+                        }
                         let lit = focus.map { edge.from == $0 || edge.to == $0 } ?? false
                         let color: Color = lit ? (edge.from == focus ? Palette.cream : Palette.claude) : Palette.muted
                         graphics.stroke(path, with: .color(color.opacity(lit ? 0.75 : (focus == nil ? 0.16 : 0.05))), lineWidth: lit ? 1.4 : 0.7)
@@ -138,7 +167,7 @@ struct ProjectMapView: View {
                         if changed[node.path] != nil {
                             graphics.stroke(Path(ellipseIn: rect.insetBy(dx: -2.5, dy: -2.5)), with: .color(Palette.warning.opacity(dimmed ? 0.3 : 1)), lineWidth: 1.6)
                         }
-                        if index == selected {
+                        if index == selected || index == pathEnd {
                             graphics.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(Palette.cream), lineWidth: 1.5)
                         }
                     }
@@ -180,7 +209,13 @@ struct ProjectMapView: View {
                     .onEnded { _ in pinchStart = nil }
             )
             .onTapGesture {
-                selected = hovered
+                // ⇧-click: the way from the selected file to this one.
+                if NSEvent.modifierFlags.contains(.shift), selected != nil, let hovered, hovered != selected {
+                    pathEnd = hovered
+                } else {
+                    selected = hovered
+                    pathEnd = nil
+                }
             }
             .background(ScrollZoom { delta in zoom = min(8, max(0.2, zoom * (1 + delta * 0.01))) })
             .overlay(alignment: .topLeading) {
@@ -209,16 +244,17 @@ struct ProjectMapView: View {
 
     private func legend(_ map: ProjectMap) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(map.groups.prefix(8).enumerated()), id: \.offset) { index, group in
+            let names = colorBy == "clusters" ? map.clusterNames : map.groups
+            ForEach(Array(names.prefix(8).enumerated()), id: \.offset) { index, group in
                 HStack(spacing: 6) {
                     Circle().fill(Self.groupColors[index]).frame(width: 8, height: 8)
                     Text(group).font(.mono(10)).foregroundStyle(Palette.text).lineLimit(1)
                 }
             }
-            if map.groups.count > 8 {
+            if names.count > 8 {
                 HStack(spacing: 6) {
                     Circle().fill(Self.otherColor).frame(width: 8, height: 8)
-                    Text("\(map.groups.count - 8) more folders").font(.mono(10)).foregroundStyle(Palette.muted)
+                    Text("\(names.count - 8) more \(colorBy == "clusters" ? "clusters" : "folders")").font(.mono(10)).foregroundStyle(Palette.muted)
                 }
             }
             Rectangle().fill(Palette.border).frame(width: 120, height: 1).padding(.vertical, 2)
@@ -283,6 +319,20 @@ struct ProjectMapView: View {
                 }
                 .buttonStyle(.borderless)
                 .font(.mono(11))
+                if let pathEnd, map.graph.nodes.indices.contains(pathEnd) {
+                    let route = routeNodes(map)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(route.isEmpty ? "NO PATH TO \(map.graph.nodes[pathEnd].name.uppercased())" : "PATH · \(route.count - 1) STEPS")
+                            .font(.mono(9.5, .semibold)).foregroundStyle(Palette.muted)
+                        ForEach(Array(route.enumerated()), id: \.offset) { step, node in
+                            HStack(spacing: 6) {
+                                Text(step == 0 ? "●" : "↳").font(.mono(10)).foregroundStyle(Palette.faint)
+                                Text(map.graph.nodes[node].name).font(.mono(10.5)).foregroundStyle(Palette.cream).lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                Text("Cluster: \(map.clusterNames[map.cluster[index]])").font(.mono(10)).foregroundStyle(Palette.muted)
                 neighborList("Uses", map.uses[index], map)
                 neighborList("Used by", map.usedBy[index], map)
             }
@@ -315,8 +365,57 @@ struct ProjectMapView: View {
     // MARK: - Helpers
 
     private func color(_ map: ProjectMap, _ index: Int) -> Color {
-        let group = map.groupOf[index]
+        let group = colorBy == "clusters" ? map.cluster[index] : map.groupOf[index]
         return group < Self.groupColors.count ? Self.groupColors[group] : Self.otherColor
+    }
+
+    /// The chain from the selected file to the ⇧-clicked one.
+    private func routeNodes(_ map: ProjectMap) -> [Int] {
+        guard let selected, let pathEnd else { return [] }
+        return GraphAnalysis.path(from: selected, to: pathEnd, nodes: map.graph.nodes.count,
+                                  edges: map.graph.edges.map { ($0.from, $0.to) }) ?? []
+    }
+
+    /// Top left: the hubs and the surprising links, each a click away.
+    private func insights(_ map: ProjectMap) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("HUBS").font(.mono(9.5, .semibold)).foregroundStyle(Palette.muted)
+            ForEach(map.hubs.prefix(5), id: \.node) { hub in
+                Button { selected = hub.node; pathEnd = nil } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(color(map, hub.node)).frame(width: 7, height: 7)
+                        Text(map.graph.nodes[hub.node].name).font(.mono(10.5)).foregroundStyle(Palette.text).lineLimit(1)
+                        Spacer(minLength: 6)
+                        Text("\(hub.degree)").font(.mono(9.5)).foregroundStyle(Palette.faint)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("\(map.graph.nodes[hub.node].path): \(hub.degree) links")
+            }
+            if !map.bridges.isEmpty {
+                Text("SURPRISING LINKS").font(.mono(9.5, .semibold)).foregroundStyle(Palette.muted).padding(.top, 6)
+                ForEach(Array(map.bridges.prefix(4).enumerated()), id: \.offset) { _, bridge in
+                    Button { selected = bridge.0; pathEnd = bridge.1 } label: {
+                        HStack(spacing: 4) {
+                            Text(map.graph.nodes[bridge.0].name).foregroundStyle(Palette.text)
+                            Text("→").foregroundStyle(Palette.faint)
+                            Text(map.graph.nodes[bridge.1].name).foregroundStyle(Palette.text)
+                        }
+                        .font(.mono(10))
+                        .lineLimit(1)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("A link between two clusters that rarely touch: \(map.clusterNames[map.cluster[bridge.0]]) and \(map.clusterNames[map.cluster[bridge.1]])")
+                }
+            }
+            Text("⇧-click a second file for the way between them").font(.mono(9)).foregroundStyle(Palette.faint).padding(.top, 4)
+        }
+        .padding(10)
+        .frame(width: 250, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.panel.opacity(0.92)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.border))
     }
 
     /// Files the app's agents touched, in the color of the (last) one that did.

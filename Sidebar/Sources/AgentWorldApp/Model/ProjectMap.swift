@@ -12,6 +12,13 @@ struct ProjectMap {
     let groupOf: [Int]
     let uses: [[Int]]
     let usedBy: [[Int]]
+    /// Clusters found in the links (biggest first), and a name for each:
+    /// the folder most of it lives in and its best-connected file.
+    let cluster: [Int]
+    let clusterNames: [String]
+    /// The most connected files, and the links between clusters that are rarest.
+    let hubs: [(node: Int, degree: Int)]
+    let bridges: [(Int, Int)]
 
     init(folder: String, graph: ProjectGraph) {
         self.folder = folder
@@ -28,7 +35,23 @@ struct ProjectMap {
         }
         self.uses = uses
         self.usedBy = usedBy
-        positions = GraphLayout.layout(nodes: graph.nodes.count, edges: graph.edges.map { ($0.from, $0.to) }, groups: groupOf)
+        let links = graph.edges.map { ($0.from, $0.to) }
+        let cluster = GraphAnalysis.communities(nodes: graph.nodes.count, edges: links)
+        self.cluster = cluster
+        hubs = GraphAnalysis.hubs(nodes: graph.nodes.count, edges: links, count: 8)
+        bridges = GraphAnalysis.bridges(edges: links, community: cluster, count: 6)
+        let clusterCount = (cluster.max() ?? -1) + 1
+        clusterNames = (0..<clusterCount).map { id in
+            let members = cluster.indices.filter { cluster[$0] == id }
+            let folders = Dictionary(grouping: members.map { graph.nodes[$0].group }, by: { $0 }).mapValues(\.count)
+            let folder = folders.max { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }?.key ?? ""
+            let hub = members.max { uses[$0].count + usedBy[$0].count < uses[$1].count + usedBy[$1].count }
+            let short = (folder as NSString).lastPathComponent
+            return members.count == 1 ? graph.nodes[members[0]].name
+                : short + (hub.map { " · " + ((graph.nodes[$0].name as NSString).deletingPathExtension) } ?? "")
+        }
+        // Clusters get their own area, so they read as islands.
+        positions = GraphLayout.layout(nodes: graph.nodes.count, edges: links, groups: cluster)
             .map { CGPoint(x: $0.x, y: $0.y) }
     }
 
