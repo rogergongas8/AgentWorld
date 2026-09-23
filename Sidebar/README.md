@@ -8,22 +8,30 @@ skills, plugins and MCP servers.
 
 The main way to use AgentWorld: a macOS app with a terminal soul.
 
-- **Code**: workspaces (folders) on the left with their sessions and live
-  status; tabs with ✕ and **+** across the top; "Start coding in <folder>"
-  with a card per CLI (Claude Code, Codex, Gemini, Kimi, Grok, OpenCode,
-  Cursor Agent, a plain Terminal, your profiles): each opens a **real
-  terminal** in the window (SwiftTerm), and "Launch more than one…" tiles
-  several. On the right, a **tip** for what you're doing and the CLI's
-  agents, skills (by topic) and MCP servers: hover for what they do, click
-  to hand one to the terminal ("Use the ui-reviewer agent to ▌").
-- **Agent**: your agents as characters; each has a page (what it does, the
-  skills it carries, its tools) and **Start a chat**: a full-width
-  conversation with it.
+- **Workspaces** (folders) down the left, with their sessions and live
+  status and how many files are changed; ⌃⌘S hides the column.
+- **Tabs in the title bar**: ✕ to close, drag to reorder, right-click to
+  rename or close others. "Start coding in <folder>" has a card per CLI
+  (Claude Code, Codex, Gemini, Kimi, Grok, OpenCode, Cursor Agent, a plain
+  Terminal, your profiles): each opens a **real terminal** (SwiftTerm), and
+  "Launch more than one…" tiles several in one tab.
+- **The right panel**: the CLI and its crew acting out what they do, then
+  Crew, Skills, Tools, **Changes** and Tips. Click (or ⌘E and the arrows)
+  to hand one to the terminal; `/` or ⌘F searches. Changes lists the
+  uncommitted files, which agent touched each one, and its diff.
+- **Agents drive the app**: with the `agentworld` skill (installed for every
+  CLI set up here) or `agentworld-ctl`, an agent opens helpers beside it;
+  they walk in, work, and celebrate with their lead when done.
+- **Usage**: tokens today in the title bar; by CLI, day and session in its
+  popover (Claude Code, Codex with its plan window, Gemini CLI).
+- **Settings** (⌘,): terminal font, notifications, which CLIs show, launch
+  profiles, open at login.
 
-Build and install it with `make app` (or `./scripts/build-app.sh`), then open
-**AgentWorld** from Spotlight/Launchpad, or `agentworld app` from a terminal
-to open it on that folder. It reads your login shell's environment, so the
-CLIs are found even when opened from the Dock. Needs macOS 13+.
+Build and install it with `make app` (or `./scripts/build-app.sh`): it goes
+to /Applications (~/Applications if that isn't writable). Open **AgentWorld**
+from Spotlight/Launchpad, or `agentworld app` from a terminal to open it on
+that folder. It reads your login shell's environment, so the CLIs are found
+even when opened from the Dock. Needs macOS 13+.
 
 ## The terminal hub: `agentworld`
 
