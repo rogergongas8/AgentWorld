@@ -11,6 +11,7 @@ import SwiftUI
 ///     inspector on|off           folder <path>       type <text>
 ///     launch-many <name>,<name>…  layout grid|columns|rows|main
 ///     broadcast <text>           zoom <pane index>|off
+///     hittest <x> <y> <file>     which view a click there lands on
 @MainActor
 enum DebugControl {
     static func start(model: AppModel) {
@@ -32,6 +33,19 @@ enum DebugControl {
             case "snapshot-layers": snapshotLayers(to: argument)
             case "snapshot-window": snapshotWindow(to: argument)
             case "dump": dump(model: model, to: argument)
+            case "hittest":
+                // hittest <x> <y> <file>: which view a click at x, y (points from the top left) lands on.
+                let words = argument.split(separator: " ").map(String.init)
+                if words.count == 3, let x = Double(words[0]), let y = Double(words[1]),
+                   let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+                   let frame = window.contentView?.superview {
+                    let point = NSPoint(x: x, y: frame.bounds.height - y)
+                    let hit = frame.hitTest(point)
+                    var chain: [String] = []
+                    var view = hit
+                    while let current = view, chain.count < 6 { chain.append(String(describing: type(of: current))); view = current.superview }
+                    try? chain.joined(separator: " < ").write(toFile: words[2], atomically: true, encoding: .utf8)
+                }
             case "act":
                 // act <pane index> <status> [action text], e.g. `act 0 running Bash swift test`
                 let words = argument.split(separator: " ", maxSplits: 2).map(String.init)

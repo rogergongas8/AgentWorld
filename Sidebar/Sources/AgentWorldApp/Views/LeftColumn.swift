@@ -9,6 +9,13 @@ struct LeftColumn: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // The traffic lights sit here; the rest of the strip moves the window.
+            HStack(spacing: 0) {
+                WindowDragArea().frame(maxWidth: .infinity, maxHeight: .infinity)
+                SidebarToggle()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 44)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     WorkspaceList()

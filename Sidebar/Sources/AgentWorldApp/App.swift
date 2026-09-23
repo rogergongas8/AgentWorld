@@ -65,6 +65,10 @@ struct AgentWorldApp: App {
                 .keyboardShortcut("e")
             }
             CommandMenu("View") {
+                Button(model.showsSidebar ? "Hide Workspaces" : "Show Workspaces") {
+                    withAnimation(.easeOut(duration: 0.18)) { model.showsSidebar.toggle() }
+                }
+                .keyboardShortcut("s", modifiers: [.command, .control])
                 Button(model.showsInspector ? "Hide Panel" : "Show Panel") { model.showsInspector.toggle() }
                     .keyboardShortcut("i", modifiers: [.command, .option])
             }

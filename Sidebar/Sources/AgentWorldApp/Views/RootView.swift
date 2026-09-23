@@ -1,5 +1,6 @@
 import AgentWorldArt
 import AgentWorldKit
+import AppKit
 import SwiftUI
 
 /// The window: a top bar, the workspaces column, and the terminals.
@@ -7,23 +8,23 @@ struct RootView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            TopBar()
-            Rectangle().fill(Palette.border).frame(height: 1)
-            HStack(spacing: 0) {
+        HStack(spacing: 0) {
+            if model.showsSidebar {
                 LeftColumn()
                     .modifier(FolderDrop())
                     .frame(width: 250)
                     .background(Palette.panel)
+                    .transition(.move(edge: .leading))
                 Rectangle().fill(Palette.border).frame(width: 1)
-                CodeArea()
+            }
+            CodeArea()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Palette.background)
-            }
         }
         .background(Palette.background)
         .overlay { overlays }
         .background { Shortcuts() }
+        .background { TrafficLightAligner() }
         .ignoresSafeArea(.container, edges: .top)
     }
 
@@ -96,34 +97,52 @@ struct Shortcuts: View {
     }
 }
 
-/// Title bar: brand, the mode switch in the middle, what's running on the right.
-struct TopBar: View {
+/// Shows or hides the workspaces column (⌃⌘S).
+struct SidebarToggle: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Room for the traffic lights.
-            Spacer().frame(width: 64)
-            HStack(spacing: 6) {
-                Text("◆").foregroundStyle(Palette.claude)
-                Text("AgentWorld").foregroundStyle(Palette.cream)
-            }
-            .font(.mono(13, .bold))
-            Spacer()
-            RunningSummary()
-            Button {
-                model.showsInspector.toggle()
-            } label: {
-                Image(systemName: "sidebar.right")
-                    .foregroundStyle(model.showsInspector ? Palette.cream : Palette.muted)
-            }
-            .buttonStyle(.plain)
-            .help("Show or hide tips, agents and skills (⌥⌘I)")
-            Spacer().frame(width: 6)
+        ChromeButton(symbol: "sidebar.left", active: model.showsSidebar, help: "Show or hide workspaces (⌃⌘S)") {
+            withAnimation(.easeOut(duration: 0.18)) { model.showsSidebar.toggle() }
         }
-        .frame(height: 44)
-        .background(Palette.panel)
     }
+}
+
+/// A plain icon button for the window chrome, with a hover state.
+struct ChromeButton: View {
+    let symbol: String
+    var active = false
+    let help: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .foregroundStyle(active || hovering ? Palette.cream : Palette.muted)
+                .frame(width: 28, height: 26)
+                .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Palette.hover : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(help)
+    }
+}
+
+/// Empty chrome that moves the window, and zooms it on a double-click, the
+/// way a title bar does.
+struct WindowDragArea: NSViewRepresentable {
+    final class DragView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2 { window?.performZoom(nil) } else { window?.performDrag(with: event) }
+        }
+    }
+
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 struct RunningSummary: View {

@@ -10,10 +10,7 @@ struct CodeArea: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !model.folders.isEmpty {
-                TabStrip(tabs: model.tabs(in: model.selectedFolder))
-                Rectangle().fill(Palette.border).frame(height: 1)
-            }
+            TabStrip(tabs: model.tabs(in: model.selectedFolder))
             HStack(spacing: 0) {
                 Group {
                     if model.showsLauncher || model.selectedTab == nil || model.selectedTab?.folder != model.selectedFolder {
@@ -45,51 +42,62 @@ struct TabStrip: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "folder.fill").foregroundStyle(Palette.claude)
-                Text(URL(fileURLWithPath: model.selectedFolder).lastPathComponent).foregroundStyle(Palette.cream)
+            if !model.showsSidebar {
+                // Room for the traffic lights, then the way back to the workspaces.
+                Spacer().frame(width: 74)
+                SidebarToggle().frame(height: TabChip.height)
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.fill").foregroundStyle(Palette.claude)
+                    Text(model.workspaceName(model.selectedFolder)).foregroundStyle(Palette.cream).lineLimit(1)
+                }
+                .font(.mono(12, .semibold))
+                .frame(height: TabChip.height)
+                .padding(.horizontal, 10)
             }
-            .font(.mono(12, .semibold))
-            .frame(height: TabChip.height)
-            .padding(.trailing, 14)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .bottom, spacing: 2) {
-                    ForEach(tabs) { tab in
-                        TabChip(tab: tab, dragging: $dragging)
-                            .onDrag {
-                                dragging = tab.id
-                                return NSItemProvider(object: tab.id.uuidString as NSString)
-                            }
-                            .onDrop(of: [.text], delegate: TabDrop(target: tab.id, dragging: $dragging, model: model))
+            if !model.folders.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .bottom, spacing: 2) {
+                        ForEach(tabs) { tab in
+                            TabChip(tab: tab, dragging: $dragging)
+                                .onDrag {
+                                    dragging = tab.id
+                                    return NSItemProvider(object: tab.id.uuidString as NSString)
+                                }
+                                .onDrop(of: [.text], delegate: TabDrop(target: tab.id, dragging: $dragging, model: model))
+                        }
+                        ChromeButton(symbol: "plus", active: model.showsLauncher, help: "Open another agent or terminal here (⌘T)") {
+                            model.showsLauncher = true
+                        }
+                        .padding(.leading, 4)
+                        .padding(.bottom, 4)
                     }
-                    Button {
-                        model.showsLauncher = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(model.showsLauncher ? Palette.cream : Palette.muted)
-                            .frame(width: 30, height: 26)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(model.showsLauncher ? Palette.selected : .clear))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, 4)
-                    .padding(.bottom, 4)
-                    .help("Open another agent or terminal here (⌘T)")
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(-1)
+            }
+            WindowDragArea().frame(minWidth: 20, maxWidth: .infinity, maxHeight: .infinity)
+            HStack(spacing: 6) {
+                if let tab = model.selectedTab, !model.showsLauncher, tab.folder == model.selectedFolder {
+                    if tab.sessions.count > 1 { LayoutPicker(tab: tab) }
+                    AddPaneMenu(tab: tab)
+                    Rectangle().fill(Palette.border).frame(width: 1, height: 16).padding(.horizontal, 4)
+                }
+                RunningSummary().padding(.trailing, 6)
+                ChromeButton(symbol: "sidebar.right", active: model.showsInspector, help: "Show or hide agents, skills and tips (⌥⌘I)") {
+                    model.showsInspector.toggle()
                 }
             }
-            // Double-click the empty strip for a new tab, like a browser.
-            Color.clear
-                .frame(maxWidth: .infinity, minHeight: TabChip.height, maxHeight: TabChip.height)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { model.showsLauncher = true }
+            .frame(height: TabChip.height)
+            .padding(.bottom, 1)
         }
-        .padding(.horizontal, 12)
-        .frame(height: 42, alignment: .bottom)
+        .padding(.leading, model.showsSidebar ? 10 : 0)
+        .padding(.trailing, 10)
+        .frame(height: 44, alignment: .bottom)
         .background(alignment: .bottom) {
             // The line the selected tab breaks through.
             Rectangle().fill(Palette.border).frame(height: 1)
         }
+        .background(Palette.panel.opacity(0.55))
         .background(Palette.background)
         // A drag let go outside the tabs still ends.
         .onDrop(of: [.text], isTargeted: nil) { _ in

@@ -14,7 +14,16 @@ struct LauncherView: View {
     @State private var installHelp: LaunchProfile?
 
     var body: some View {
-        ScrollView {
+        // Centered in the window when it fits, scrolling when it doesn't.
+        GeometryReader { geometry in
+            ScrollView {
+                content.frame(maxWidth: .infinity, minHeight: geometry.size.height)
+            }
+        }
+        .sheet(item: $installHelp) { profile in InstallSheet(profile: profile) }
+    }
+
+    @ViewBuilder private var content: some View {
             if model.folders.isEmpty {
                 VStack(spacing: 22) {
                     VStack(spacing: 6) {
@@ -31,11 +40,10 @@ struct LauncherView: View {
                         .padding(.horizontal, 28)
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.bottom, 30)
             } else {
                 launcher
             }
-        }
-        .sheet(item: $installHelp) { profile in InstallSheet(profile: profile) }
     }
 
     private var launcher: some View {

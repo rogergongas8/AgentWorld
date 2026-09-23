@@ -10,8 +10,6 @@ struct TileGrid: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TileToolbar(tab: tab)
-            Rectangle().fill(Palette.border).frame(height: 1)
             panes
                 .background(Palette.border)
             if tab.sessions.count > 1 {
@@ -50,51 +48,6 @@ struct TileGrid: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Toolbar
-
-struct TileToolbar: View {
-    @EnvironmentObject private var model: AppModel
-    @ObservedObject var tab: TerminalTab
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if tab.sessions.count > 1 {
-                LayoutPicker(tab: tab)
-            }
-            AddPaneMenu(tab: tab)
-            Spacer(minLength: 0)
-            if tab.sessions.count == 1 {
-                Text("Add up to \(AppModel.maxPanes) CLIs here and prompt them all at once.")
-                    .font(.mono(10.5))
-                    .foregroundStyle(Palette.faint)
-                    .lineLimit(1)
-            } else {
-                CrewSummary(sessions: tab.sessions)
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
-        .background(Palette.panel)
-    }
-}
-
-/// "2 working · 1 needs you", with the faces, at the right of the toolbar.
-struct CrewSummary: View {
-    let sessions: [TerminalSession]
-
-    var body: some View {
-        let busy = sessions.filter { $0.status.tone == .busy }.count
-        let waiting = sessions.filter { $0.status.tone == .needsYou }.count
-        HStack(spacing: 8) {
-            if busy > 0 { Text("\(busy) working").foregroundStyle(Palette.live) }
-            if waiting > 0 { Text("\(waiting) need\(waiting == 1 ? "s" : "") you").foregroundStyle(Palette.warning) }
-            if busy == 0, waiting == 0 { Text("\(sessions.count) panes").foregroundStyle(Palette.faint) }
-        }
-        .font(.mono(10.5))
-        .lineLimit(1)
     }
 }
 
@@ -189,14 +142,14 @@ struct AddPaneMenu: View {
                 Button(profile.isCustom ? profile.name : profile.provider.name) { model.addPane(profile, to: tab) }
             }
         } label: {
-            Label(full ? "\(AppModel.maxPanes) panes max" : "Add pane", systemImage: "plus.rectangle.on.rectangle")
-                .font(.mono(11))
+            Image(systemName: "rectangle.split.2x1")
+                .font(.system(size: 13))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
         .foregroundStyle(Palette.muted)
         .disabled(full)
-        .help("Open another CLI in this tab, next to these (⌘D)")
+        .help(full ? "\(AppModel.maxPanes) panes at most" : "Split: open another CLI in this tab, next to these (⌘D)")
     }
 }
 

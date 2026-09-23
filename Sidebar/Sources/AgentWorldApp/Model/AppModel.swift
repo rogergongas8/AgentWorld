@@ -47,6 +47,7 @@ final class AppModel: ObservableObject {
     /// The launcher is shown instead of a terminal (the "+" tab).
     @Published var showsLauncher = true
     @Published var showsInspector = true
+    @Published var showsSidebar = true
     /// ⌘K and the kit browser, over everything.
     @Published var showsPalette = false
     @Published var showsKit = false
