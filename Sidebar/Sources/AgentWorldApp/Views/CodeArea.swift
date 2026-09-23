@@ -202,6 +202,19 @@ struct TabChip: View {
         .overlay(alignment: .top) {
             if selected { Rectangle().fill(accent).frame(height: 2).padding(.horizontal, 8) }
         }
+        .overlay(alignment: .topTrailing) {
+            // Holding ⌘: which number jumps here.
+            if model.showsKeyBadges, let number = model.tabs(in: model.selectedFolder).firstIndex(where: { $0.id == tab.id }).map({ $0 + 1 }), number <= 9 {
+                Text("⌘\(number)")
+                    .font(.mono(10, .bold))
+                    .foregroundStyle(Palette.background)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Palette.cream))
+                    .offset(x: -4, y: 3)
+                    .transition(.opacity)
+            }
+        }
         .opacity(dragging == tab.id ? 0.4 : 1)
         .contentShape(Rectangle())
         .onHover { inside in

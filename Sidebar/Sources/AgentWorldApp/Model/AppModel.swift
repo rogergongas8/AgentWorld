@@ -83,6 +83,13 @@ final class AppModel: ObservableObject {
     let usageLedger = UsageLedger()
     var usageInFlight = false
     @Published var showsCommit = false
+    /// ⌃Tab's terminal switcher, while it's up.
+    @Published var switcher: Switcher?
+    /// Holding ⌘: tabs show their ⌘1…9.
+    @Published var showsKeyBadges = false
+    var keyBadgeTimer: Timer?
+    /// Terminals by when you were last in them, newest first.
+    var recentSessionIDs: [UUID] = []
     /// The project map over the window, and the last one built.
     @Published var showsMap = false
     @Published var projectMap: ProjectMap?
@@ -158,6 +165,7 @@ final class AppModel: ObservableObject {
             objectWillChange.send()
         }
         notifier?.update(allSessions, now: date)
+        noteFocus()
         ticks += 1
         if ticks % 20 == 0 { saveWorkspaces() }
         if ticks % 60 == 1 { refreshGit() }

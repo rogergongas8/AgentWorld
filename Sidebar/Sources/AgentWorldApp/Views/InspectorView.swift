@@ -436,8 +436,9 @@ struct KeyHintBar: View {
                     model.enterPanel()
                 } label: {
                     HStack(spacing: 10) {
-                        hint("⌘E", "browse with the keyboard")
-                        hint("⌘/", "all shortcuts")
+                        hint("⌃Tab", "switch terminal")
+                        hint("⌘1-9", "tabs")
+                        hint("⌘/", "all keys")
                     }
                 }
                 .buttonStyle(.plain)

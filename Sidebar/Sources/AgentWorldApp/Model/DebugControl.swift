@@ -171,11 +171,17 @@ enum DebugControl {
 
     private static func keys(_ text: String, model: AppModel) {
         let named: [String: (UInt16, String)] = ["esc": (53, "\u{1b}"), "bs": (51, "\u{7f}"), "down": (125, "\u{F701}"),
-                                                 "up": (126, "\u{F700}"), "ret": (36, "\r"), "tab": (48, "\t")]
+                                                 "up": (126, "\u{F700}"), "ret": (36, "\r"), "tab": (48, "\t"),
+                                                 "right": (124, "\u{F703}"), "left": (123, "\u{F702}"),
+                                                 "ctab": (48, "\t"), "release": (0, "")]
         var tokens: [(UInt16, String)] = []
+        var controlled = Set<Int>()
         var rest = Substring(text)
         while let first = rest.first {
             if first == "{", let close = rest.firstIndex(of: "}"), let key = named[String(rest[rest.index(after: rest.startIndex)..<close])] {
+                let name = String(rest[rest.index(after: rest.startIndex)..<close])
+                if name == "ctab" { controlled.insert(tokens.count) }
+                if name == "release" { controlled.insert(-tokens.count - 1) }
                 tokens.append(key)
                 rest = rest[rest.index(after: close)...]
             } else {
@@ -183,10 +189,17 @@ enum DebugControl {
                 rest = rest.dropFirst()
             }
         }
-        for (code, characters) in tokens {
-            guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+        for (index, (code, characters)) in tokens.enumerated() {
+            // {release}: letting go of ⌃ while the switcher is up.
+            if controlled.contains(-index - 1) {
+                if model.switcher?.holdingControl == true { model.commitSwitcher() }
+                continue
+            }
+            let flags: NSEvent.ModifierFlags = controlled.contains(index) ? [.control] : []
+            guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0,
                                                context: nil, characters: characters, charactersIgnoringModifiers: characters,
                                                isARepeat: false, keyCode: code) else { continue }
+            if model.routeSwitcher(event) { continue }
             _ = model.route(event)
         }
     }

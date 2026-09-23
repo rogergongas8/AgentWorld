@@ -50,6 +50,8 @@ struct AgentWorldApp: App {
                 .keyboardShortcut("w")
             }
             CommandMenu("Go") {
+                Button("Switch Terminal…  ⌃Tab") { model.openSwitcher(holdingControl: false) }
+                Divider()
                 Button("Next Tab") { model.selectTab(offset: 1) }.keyboardShortcut("]", modifiers: [.command, .shift])
                 Button("Previous Tab") { model.selectTab(offset: -1) }.keyboardShortcut("[", modifiers: [.command, .shift])
                 Divider()

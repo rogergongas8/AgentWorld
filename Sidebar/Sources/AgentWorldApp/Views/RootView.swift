@@ -43,6 +43,12 @@ struct RootView: View {
             }
             .transition(.opacity)
         }
+        if let state = model.switcher {
+            ZStack {
+                Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { model.switcher = nil }
+                SwitcherView(state: state)
+            }
+        }
         if model.showsMap {
             ZStack {
                 Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsMap = false }
@@ -105,11 +111,12 @@ struct Shortcuts: View {
                 let profile = (model.focusedSession ?? tab.sessions.last)?.profile
                 if let profile { model.addPane(profile, to: tab) }
             }
+            // ⌘1…9: tabs, like a browser. ⌥⌘1…9: panes in this tab.
             ForEach(1..<10) { index in
-                shortcut(KeyEquivalent(Character("\(index)"))) {
+                shortcut(KeyEquivalent(Character("\(index)"))) { model.selectTab(number: index) }
+                shortcut(KeyEquivalent(Character("\(index)")), [.command, .option]) {
                     let sessions = model.selectedTab.map(\.sessions) ?? []
-                    let all = sessions.count > 1 ? sessions : model.allSessions
-                    if all.indices.contains(index - 1) { model.reveal(all[index - 1]) }
+                    if sessions.indices.contains(index - 1) { model.reveal(sessions[index - 1]) }
                 }
             }
         }

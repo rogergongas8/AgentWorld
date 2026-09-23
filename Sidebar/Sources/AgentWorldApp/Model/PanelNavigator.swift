@@ -161,7 +161,12 @@ extension AppModel {
     func installKeyRouter() {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
+            if self.routeSwitcher(event) { return nil }
             return self.route(event) ? nil : event
+        }
+        NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.routeModifiers(event)
+            return event
         }
     }
 
