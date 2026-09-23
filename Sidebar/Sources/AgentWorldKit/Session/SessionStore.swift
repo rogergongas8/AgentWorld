@@ -25,6 +25,9 @@ public final class SessionStore {
     public private(set) var turns = 0
     /// Last time any actor hit a tool error, for a brief on-stage reaction.
     public private(set) var lastErrorAt: Date?
+    /// Files the session (or its helpers) edited, full paths, for the app's
+    /// Changes: exactly who touched what.
+    public private(set) var editedFiles: Set<String> = []
 
     private var pendingMainTools: [String: ToolInvocation] = [:]
     private var countedMessageIds = Set<String>()
@@ -161,6 +164,7 @@ public final class SessionStore {
     // MARK: - Helpers
 
     private func record(_ tool: ToolInvocation, actor: String?, at time: Date) {
+        if let path = tool.editedPath { editedFiles.insert(path) }
         toolStats[tool.name, default: ToolStat(name: tool.name, kind: tool.kind, count: 0, errors: 0, lastUsed: time)].count += 1
         toolStats[tool.name]?.lastUsed = time
 

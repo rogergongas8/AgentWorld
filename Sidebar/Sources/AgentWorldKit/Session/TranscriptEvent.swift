@@ -78,8 +78,10 @@ public struct ToolInvocation: Sendable {
     public let todos: [TodoItem]?
     /// For `TaskCreate`/`TaskUpdate` (incremental task list edits).
     public let taskEdit: TaskEdit?
+    /// The full path an edit tool wrote (Edit, Write, MultiEdit, NotebookEdit).
+    public let editedPath: String?
 
-    public init(id: String, name: String, summary: String? = nil, subagentType: String? = nil, subagentDescription: String? = nil, skillName: String? = nil, todos: [TodoItem]? = nil, taskEdit: TaskEdit? = nil) {
+    public init(id: String, name: String, summary: String? = nil, subagentType: String? = nil, subagentDescription: String? = nil, skillName: String? = nil, todos: [TodoItem]? = nil, taskEdit: TaskEdit? = nil, editedPath: String? = nil) {
         self.id = id
         self.name = name
         self.kind = ToolKind(toolName: name)
@@ -89,6 +91,7 @@ public struct ToolInvocation: Sendable {
         self.skillName = skillName
         self.todos = todos
         self.taskEdit = taskEdit
+        self.editedPath = editedPath
     }
 }
 

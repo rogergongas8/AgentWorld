@@ -2,8 +2,9 @@ import AgentWorldKit
 import Foundation
 
 /// A workspace's uncommitted changes, and which of the app's agents touched
-/// each file. Works for every CLI: a file whose modification time moves
-/// while agents in that workspace are working is credited to them.
+/// each file. Exact when the CLI records its edits (Claude's transcript);
+/// for every other CLI, a file whose modification time moves while agents
+/// in that workspace are working is credited to them.
 struct WorkspaceChanges: Equatable {
     var root: String
     var files: [FileChange]
@@ -60,9 +61,22 @@ extension AppModel {
         }
         let previous = changes[folder]
         var next = WorkspaceChanges(root: read.root, files: read.changes)
-        let working = tabs(in: folder).flatMap(\.sessions).filter { $0.status.tone == .busy }.map(\.id)
+        let sessions = tabs(in: folder).flatMap(\.sessions)
+        let working = sessions.filter { $0.status.tone == .busy }.map(\.id)
+        // git reports real paths, a CLI may write through a symlink (/tmp → /private/tmp).
+        let edited = sessions.compactMap { session -> (UUID, Set<String>)? in
+            guard let files = session.store?.editedFiles, !files.isEmpty else { return nil }
+            return (session.id, Set(files.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }))
+        }
+        let resolvedRoot = URL(fileURLWithPath: read.root).resolvingSymlinksInPath().path
         for file in read.changes {
             var who = previous?.touchedBy[file.path] ?? []
+            // Exact where the CLI says what it edited (Claude's Edit/Write calls,
+            // rebuilt from the transcript after a relaunch too).
+            let full = URL(fileURLWithPath: resolvedRoot).appendingPathComponent(file.path).path
+            for (id, files) in edited where files.contains(full) && !who.contains(id) {
+                who.append(id)
+            }
             let stamp = stamps[file.path]
             // First sight on launch isn't news: only changes seen happening count.
             let changed = previous != nil && (previous?.stamps[file.path] != stamp || previous?.files.contains { $0.path == file.path } == false)

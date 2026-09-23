@@ -31,6 +31,13 @@ import Testing
         #expect(usage.output == 50)
     }
 
+    @Test func editsKeepTheirFullPathAndTheStoreCollectsThem() {
+        let line = #"{"type":"assistant","timestamp":"2026-09-22T10:00:00.123Z","message":{"id":"m2","content":[{"type":"tool_use","id":"e1","name":"Edit","input":{"file_path":"/work/app/Sources/A.swift","old_string":"a","new_string":"b"}},{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"/work/app/B.swift"}},{"type":"tool_use","id":"w1","name":"Write","input":{"file_path":"/work/app/C.md","content":"x"}}]}}"#
+        let store = SessionStore()
+        for event in parser.parse(line: line) { store.apply(event) }
+        #expect(store.editedFiles == ["/work/app/Sources/A.swift", "/work/app/C.md"])
+    }
+
     @Test func agentAndSkillAndMCPCalls() {
         let line = #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a","name":"Agent","input":{"subagent_type":"Explore","description":"Find tokens"}},{"type":"tool_use","id":"s","name":"Skill","input":{"skill":"design"}},{"type":"tool_use","id":"m","name":"mcp__claude_ai_Google_Drive__search","input":{"query":"specs"}}]}}"#
         let tools = kinds(line).compactMap { kind -> ToolInvocation? in

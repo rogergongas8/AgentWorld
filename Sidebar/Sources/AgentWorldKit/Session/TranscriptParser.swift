@@ -105,7 +105,8 @@ public struct TranscriptParser: Sendable {
             subagentDescription: input["description"] as? String,
             skillName: name == "Skill" ? (input["skill"] as? String ?? input["command"] as? String) : nil,
             todos: name == "TodoWrite" ? todos(from: input) : nil,
-            taskEdit: taskEdit(forTool: name, input: input)
+            taskEdit: taskEdit(forTool: name, input: input),
+            editedPath: ToolKind(toolName: name) == .edit ? (input["file_path"] as? String ?? input["notebook_path"] as? String) : nil
         )
     }
 
