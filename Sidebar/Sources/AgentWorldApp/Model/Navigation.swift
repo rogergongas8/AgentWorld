@@ -15,6 +15,23 @@ extension AppModel {
         if let session = open[next].sessions.first { DispatchQueue.main.async { session.focus() } }
     }
 
+    /// Drags `id` to where `target` is, among the tabs of the same folder.
+    func moveTab(_ id: UUID, to target: UUID) {
+        guard id != target, let from = tabs.firstIndex(where: { $0.id == id }),
+              let to = tabs.firstIndex(where: { $0.id == target }), tabs[from].folder == tabs[to].folder else { return }
+        tabs.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+    }
+
+    /// Closes the tabs of `tab`'s folder other than it, or only those after it.
+    func closeTabs(besides tab: TerminalTab, onlyAfter: Bool = false) {
+        let open = tabs(in: tab.folder)
+        guard let index = open.firstIndex(where: { $0.id == tab.id }) else { return }
+        let doomed = onlyAfter ? Array(open[(index + 1)...]) : open.filter { $0.id != tab.id }
+        for other in doomed { close(other) }
+        selectedTabID = tab.id
+        showsLauncher = false
+    }
+
     /// The next or previous pane in the tab, keyboard and all.
     func focusPane(offset: Int) {
         guard let tab = selectedTab, !tab.sessions.isEmpty else { return }

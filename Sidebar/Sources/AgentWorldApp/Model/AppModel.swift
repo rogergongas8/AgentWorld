@@ -21,8 +21,17 @@ final class TerminalTab: ObservableObject, Identifiable {
         self.sessions = sessions
     }
 
+    /// "Claude", or for several panes "Terminal ×3", "Claude + Codex ×2".
     var title: String {
-        sessions.count == 1 ? sessions[0].label : sessions.map(\.provider.shortName).joined(separator: " + ")
+        guard sessions.count > 1 else { return sessions.first?.label ?? "" }
+        var names: [String] = []
+        var counts: [String: Int] = [:]
+        for session in sessions {
+            let name = session.provider.shortName
+            if counts[name] == nil { names.append(name) }
+            counts[name, default: 0] += 1
+        }
+        return names.map { counts[$0]! > 1 ? "\($0) ×\(counts[$0]!)" : $0 }.joined(separator: " + ")
     }
 
     var agentName: String? { sessions.first?.agentName }
@@ -59,8 +68,13 @@ final class AppModel: ObservableObject {
     /// The card the launcher's arrow keys are on.
     @Published var launcherIndex = 0
     @Published private(set) var environmentReady = false
-    /// Ticks twice a second so statuses and animations stay fresh.
-    @Published private(set) var now = Date()
+    /// The last tick. Not published: animations run on their own
+    /// `TimelineView`s, and republishing the whole model twice a second made
+    /// the right panel flicker and drop hovers and clicks.
+    private(set) var now = Date()
+    /// What views read from sessions without observing them (status tones,
+    /// helpers at work); the model republishes only when it changes.
+    private var liveState: [String] = []
 
     private var configs: [String: (config: AgentConfiguration, at: Date)] = [:]
     private var installed: [String: String?] = [:]
@@ -100,6 +114,13 @@ final class AppModel: ObservableObject {
         now = date
         for tab in tabs {
             for session in tab.sessions { session.refresh(now: date) }
+        }
+        let live = allSessions.map { session in
+            "\(session.id) \(session.status.tone) " + (session.store?.runningSubagents.map { $0.type + ":" + ($0.state.action ?? "") }.joined(separator: ",") ?? "")
+        }
+        if live != liveState {
+            liveState = live
+            objectWillChange.send()
         }
         notifier?.update(allSessions, now: date)
         ticks += 1

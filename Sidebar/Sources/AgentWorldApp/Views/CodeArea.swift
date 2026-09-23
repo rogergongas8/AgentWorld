@@ -36,81 +36,186 @@ struct CodeArea: View {
 
 // MARK: - Tabs
 
+/// The workspace's tabs, drawn as tabs: the selected one opens onto the
+/// terminals below it, each has a close button, and they reorder by dragging.
 struct TabStrip: View {
     @EnvironmentObject private var model: AppModel
     let tabs: [TerminalTab]
+    @State private var dragging: UUID?
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .bottom, spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "folder.fill").foregroundStyle(Palette.claude)
                 Text(URL(fileURLWithPath: model.selectedFolder).lastPathComponent).foregroundStyle(Palette.cream)
             }
             .font(.mono(12, .semibold))
-            .padding(.trailing, 6)
+            .frame(height: TabChip.height)
+            .padding(.trailing, 14)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(tabs) { tab in TabChip(tab: tab) }
+                HStack(alignment: .bottom, spacing: 2) {
+                    ForEach(tabs) { tab in
+                        TabChip(tab: tab, dragging: $dragging)
+                            .onDrag {
+                                dragging = tab.id
+                                return NSItemProvider(object: tab.id.uuidString as NSString)
+                            }
+                            .onDrop(of: [.text], delegate: TabDrop(target: tab.id, dragging: $dragging, model: model))
+                    }
                     Button {
                         model.showsLauncher = true
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(model.showsLauncher ? Palette.cream : Palette.muted)
-                            .frame(width: 28, height: 26)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(model.showsLauncher ? Palette.selected : Palette.raised))
+                            .frame(width: 30, height: 26)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(model.showsLauncher ? Palette.selected : .clear))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .padding(.leading, 4)
+                    .padding(.bottom, 4)
                     .help("Open another agent or terminal here (⌘T)")
                 }
             }
-            Spacer(minLength: 0)
+            // Double-click the empty strip for a new tab, like a browser.
+            Color.clear
+                .frame(maxWidth: .infinity, minHeight: TabChip.height, maxHeight: TabChip.height)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { model.showsLauncher = true }
         }
         .padding(.horizontal, 12)
-        .frame(height: 40)
-        .background(Palette.panel)
+        .frame(height: 42, alignment: .bottom)
+        .background(alignment: .bottom) {
+            // The line the selected tab breaks through.
+            Rectangle().fill(Palette.border).frame(height: 1)
+        }
+        .background(Palette.background)
+        // A drag let go outside the tabs still ends.
+        .onDrop(of: [.text], isTargeted: nil) { _ in
+            dragging = nil
+            return true
+        }
     }
 }
 
+/// One tab. Its width stays put so tabs don't jump as statuses change.
 struct TabChip: View {
+    static let height: CGFloat = 34
     @EnvironmentObject private var model: AppModel
     @ObservedObject var tab: TerminalTab
+    @Binding var dragging: UUID?
     @State private var hovering = false
+    @State private var hoveringClose = false
 
     var body: some View {
         let selected = model.selectedTabID == tab.id && !model.showsLauncher
-        HStack(spacing: 7) {
-            ForEach(tab.sessions) { session in TabStatusDot(session: session) }
+        let accent = tab.sessions.first?.provider.swiftColor ?? Palette.claude
+        HStack(spacing: 8) {
+            if let lead = tab.sessions.first {
+                TabFace(session: lead).frame(width: 16, height: 10)
+            }
             Text(tab.title)
                 .font(.mono(11.5, selected ? .semibold : .regular))
-                .foregroundStyle(selected ? Palette.cream : Palette.text)
+                .foregroundStyle(selected ? Palette.cream : hovering ? Palette.text : Palette.muted)
                 .lineLimit(1)
+            Spacer(minLength: 4)
+            HStack(spacing: 3) {
+                ForEach(tab.sessions) { session in TabStatusDot(session: session) }
+            }
             Button {
                 model.close(tab)
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 8.5, weight: .bold))
-                    .foregroundStyle(hovering || selected ? Palette.muted : Palette.faint)
-                    .frame(width: 16, height: 16)
-                    .background(Circle().fill(hovering ? Palette.hover : .clear))
+                    .foregroundStyle(hoveringClose ? Palette.cream : selected || hovering ? Palette.muted : Palette.faint)
+                    .frame(width: 18, height: 18)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(hoveringClose ? Palette.hover : .clear))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .onHover { hoveringClose = $0 }
             .help("Close (⌘W): ends this session")
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 5)
-        .frame(height: 26)
-        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selected : hovering ? Palette.hover : Palette.raised))
-        .overlay(alignment: .bottom) {
-            if selected { Rectangle().fill(tab.sessions.first?.provider.swiftColor ?? Palette.claude).frame(height: 2).padding(.horizontal, 6) }
+        .padding(.leading, 12)
+        .padding(.trailing, 7)
+        .frame(minWidth: 150, maxWidth: 230, minHeight: Self.height, maxHeight: Self.height)
+        .fixedSize(horizontal: true, vertical: false)
+        .background(
+            TabShape(radius: 8)
+                .fill(selected ? Palette.panel : hovering ? Palette.raised : .clear)
+                // Covers the strip's bottom line so the tab opens onto its content.
+                .padding(.bottom, selected ? -1 : 0)
+        )
+        .overlay(
+            TabShape(radius: 8, open: true)
+                .stroke(selected ? Palette.border : .clear, lineWidth: 1)
+        )
+        .overlay(alignment: .top) {
+            if selected { Rectangle().fill(accent).frame(height: 2).padding(.horizontal, 8) }
         }
-        .onHover { hovering = $0 }
+        .opacity(dragging == tab.id ? 0.4 : 1)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            hovering = inside
+            // Back from a drag that ended somewhere nothing noticed.
+            if inside, dragging != nil, NSEvent.pressedMouseButtons == 0 { dragging = nil }
+        }
         .onTapGesture {
             model.selectedTabID = tab.id
             model.showsLauncher = false
             DispatchQueue.main.async { tab.sessions.first?.focus() }
         }
+        .contextMenu {
+            Button("Close Tab") { model.close(tab) }
+            Button("Close Other Tabs") { model.closeTabs(besides: tab) }
+            Button("Close Tabs to the Right") { model.closeTabs(besides: tab, onlyAfter: true) }
+        }
+        .help(tab.sessions.map { "\($0.label): \($0.status.text)" }.joined(separator: "\n"))
     }
+}
+
+/// A tab's outline: rounded on top, square at the bottom. `open` leaves the
+/// bottom edge out, for the border of a tab that joins what's below.
+struct TabShape: Shape {
+    var radius: CGFloat
+    var open = false
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + radius, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + radius), control: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        if !open { path.closeSubpath() }
+        return path
+    }
+}
+
+/// Moves the dragged tab over the one it's dragged onto, as it happens.
+struct TabDrop: DropDelegate {
+    let target: UUID
+    @Binding var dragging: UUID?
+    let model: AppModel
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target else { return }
+        withAnimation(.easeOut(duration: 0.15)) { model.moveTab(dragging, to: target) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
+}
+
+struct TabFace: View {
+    @ObservedObject var session: TerminalSession
+    var body: some View { FaceView(figure: session.provider.figure, scale: 1.6, busy: session.status.tone == .busy) }
 }
 
 struct TabStatusDot: View {

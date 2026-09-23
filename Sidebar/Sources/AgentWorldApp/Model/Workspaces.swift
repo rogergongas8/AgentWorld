@@ -232,7 +232,7 @@ extension AppModel {
         Task.detached(priority: .utility) {
             var results: [String: GitInfo] = [:]
             for path in paths { if let info = GitInfo.read(path) { results[path] = info } }
-            await MainActor.run { self.git = results }
+            await MainActor.run { if self.git != results { self.git = results } }
         }
     }
 
