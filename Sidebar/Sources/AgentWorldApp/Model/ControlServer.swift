@@ -53,6 +53,11 @@ enum ControlServer {
       close <#n>                     close pane #n
       say <text…>                    show a line on your character's stage
       notify <text…>                 macOS notification for the user
+      map                            the project's structure: clusters of files
+                                     that link together, hubs, surprising links
+      map file <path>                what a file uses and what uses it (its blast radius)
+      map path <a> <b>               the chain of files linking two files
+      map show [path]                open the project map for the user (on that file)
     """
 
     // MARK: - Commands
@@ -145,6 +150,32 @@ enum ControlServer {
         case "notify":
             model.notifier?.post(title: caller?.label ?? "AgentWorld", body: args.joined(separator: " "), session: caller)
             return ok("")
+
+        case "map":
+            let folder = caller?.folder ?? model.selectedFolder
+            let map = await model.fileMap(for: folder)
+            guard !map.graph.nodes.isEmpty else { return fail("no source files found in \(folder)") }
+            func node(_ reference: String?) -> Int? { reference.flatMap(map.find) }
+            switch args.first ?? "overview" {
+            case "overview":
+                return ok(map.overviewText)
+            case "file":
+                guard let index = node(args.dropFirst().first) else { return fail("usage: map file <path> (a path or a unique file name)") }
+                return ok(map.fileText(index))
+            case "path":
+                guard args.count >= 3, let a = node(args[1]), let b = node(args[2]) else { return fail("usage: map path <file a> <file b>") }
+                guard let route = GraphAnalysis.path(from: a, to: b, nodes: map.graph.nodes.count, edges: map.graph.edges.map { ($0.from, $0.to) }) else {
+                    return ok("no chain of links between \(map.graph.nodes[a].path) and \(map.graph.nodes[b].path)")
+                }
+                return ok(route.map { map.graph.nodes[$0].path }.joined(separator: "\n  → "))
+            case "show":
+                if model.selectedFolder != folder { model.select(folder: folder) }
+                model.openProjectMap()
+                if let reference = args.dropFirst().first, let index = node(reference) { model.mapFocus = map.graph.nodes[index].path }
+                return ok("")
+            default:
+                return fail("usage: map [overview | file <path> | path <a> <b> | show [path]]")
+            }
 
         default:
             return fail("unknown command \(request.command) — see `agentworld-ctl help`")

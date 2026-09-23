@@ -120,3 +120,59 @@ extension AppModel {
         return result
     }
 }
+
+// MARK: - For agents (agentworld-ctl map)
+
+extension AppModel {
+    /// The files map of `folder`: the one on screen if it's that folder's,
+    /// else built now (off the main thread).
+    func fileMap(for folder: String) async -> ProjectMap {
+        if let map = projectMap, map.folder == folder, !map.symbols { return map }
+        return await Task.detached(priority: .userInitiated) {
+            ProjectMap(folder: folder, graph: ProjectGraph.build(root: folder, files: ProjectFiles.list(folder)))
+        }.value
+    }
+}
+
+extension ProjectMap {
+    /// A file by path, or by a unique end of its path ("AppModel.swift").
+    func find(_ reference: String) -> Int? {
+        let clean = reference.trimmingCharacters(in: CharacterSet(charactersIn: "./ "))
+        if let exact = graph.nodes.firstIndex(where: { $0.path == clean }) { return exact }
+        let matches = graph.nodes.indices.filter { graph.nodes[$0].path.hasSuffix("/" + clean) || graph.nodes[$0].name == clean }
+        return matches.count == 1 ? matches[0] : nil
+    }
+
+    var overviewText: String {
+        var lines = ["\(graph.nodes.count) source files, \(graph.edges.count) links (a file uses another: an import, or a type it names)", ""]
+        let clusterCount = (cluster.max() ?? -1) + 1
+        lines.append("Clusters (files that mostly link among themselves):")
+        for id in 0..<min(clusterCount, 10) {
+            let members = cluster.indices.filter { cluster[$0] == id }
+            guard members.count > 1 else { continue }
+            let top = members.sorted { uses[$0].count + usedBy[$0].count > uses[$1].count + usedBy[$1].count }.prefix(4)
+            lines.append("  \(clusterNames[id]) — \(members.count) files: " + top.map { graph.nodes[$0].path }.joined(separator: ", "))
+        }
+        lines.append("")
+        lines.append("Hubs (most connected, touch with care):")
+        for hub in hubs.prefix(8) {
+            lines.append("  \(graph.nodes[hub.node].path) — uses \(uses[hub.node].count), used by \(usedBy[hub.node].count)")
+        }
+        if !bridges.isEmpty {
+            lines.append("")
+            lines.append("Surprising links (between clusters that rarely touch):")
+            for (a, b) in bridges.prefix(6) { lines.append("  \(graph.nodes[a].path) → \(graph.nodes[b].path)") }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    func fileText(_ index: Int) -> String {
+        let node = graph.nodes[index]
+        var lines = ["\(node.path) — \(node.lines) lines, cluster \(clusterNames[cluster[index]])", ""]
+        lines.append("Uses (\(uses[index].count)):")
+        lines += uses[index].map { "  " + graph.nodes[$0].path }.sorted()
+        lines.append("Used by (\(usedBy[index].count)) — what may break if it changes:")
+        lines += usedBy[index].map { "  " + graph.nodes[$0].path }.sorted()
+        return lines.joined(separator: "\n")
+    }
+}

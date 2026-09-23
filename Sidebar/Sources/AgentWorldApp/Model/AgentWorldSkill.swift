@@ -12,7 +12,7 @@ enum AgentWorldSkill {
     static let text = """
     ---
     name: agentworld
-    description: Drive the AgentWorld app you are running inside — open other agent CLIs (Claude, Codex, Gemini…) in panes beside you, hand them tasks, wait for them, read their answers, and talk to the user through your on-screen character. Use when $AGENTWORLD_SOCKET is set and the user asks for a second opinion, a reviewer, parallel work, or to compare CLIs; or to leave the user a short status line or notification during long work.
+    description: Drive the AgentWorld app you are running inside — open other agent CLIs (Claude, Codex, Gemini…) in panes beside you, hand them tasks, wait for them, read their answers, and talk to the user through your on-screen character. Use when $AGENTWORLD_SOCKET is set and the user asks for a second opinion, a reviewer, parallel work, or to compare CLIs; or to leave the user a short status line or notification during long work; also to see a project's structure cheaply (clusters, hubs, what depends on a file) with agentworld-ctl map.
     ---
 
     # AgentWorld
@@ -36,7 +36,20 @@ enum AgentWorldSkill {
     agentworld-ctl close '#3'
     agentworld-ctl say "…"                   # a line on your character's stage
     agentworld-ctl notify "…"                # macOS notification
+    agentworld-ctl map                       # project structure: clusters, hubs, surprising links
+    agentworld-ctl map file src/a.ts         # what a file uses / what uses it (blast radius)
+    agentworld-ctl map path a.ts b.ts        # how two files are linked
+    agentworld-ctl map show src/a.ts         # show the user the project map on that file
     ```
+
+    ## Finding your way in the project
+
+    `agentworld-ctl map` reads the workspace's files and how they link
+    (imports, and the types one file names that another declares), locally
+    and in a second. Use it before reading lots of files: the overview says
+    which files cluster together and which are hubs; `map file <path>` lists
+    what depends on a file before you change it; `map path a b` shows how
+    two parts connect. `map show <path>` puts the map on the user's screen.
 
     ## Handing work to another pane
 

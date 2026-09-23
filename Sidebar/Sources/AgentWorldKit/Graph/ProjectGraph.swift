@@ -189,10 +189,22 @@ public struct ProjectGraph: Sendable, Equatable {
 
     // MARK: - Types
 
-    /// Type names a file declares: class, struct, enum, protocol, interface…
+    /// Type names a file declares at its top level (a nested `View` or
+    /// `Coordinator` is local to its type): class, struct, enum, protocol,
+    /// interface… Names the platforms already use (View, Color, Data…) are
+    /// left out, since mentioning them rarely means this project's type.
     static func declaredTypes(in text: String) -> [String] {
-        matches(#"\b(?:class|struct|enum|protocol|actor|interface|record|trait|object|typealias|type)\s+([A-Z][A-Za-z0-9_]{2,})"#, in: text)
+        matches(#"(?m)^(?:@\w+(?:\([^)]*\))?\s+)*(?:(?:public|internal|private|fileprivate|open|final|export|default|abstract|sealed|data|pub|static)\s+)*(?:class|struct|enum|protocol|actor|interface|record|trait|object|typealias|type)\s+([A-Z][A-Za-z0-9_]{2,})"#, in: text)
+            .filter { !platformNames.contains($0) }
     }
+
+    static let platformNames: Set<String> = [
+        "View", "Color", "Text", "Image", "Font", "Button", "Label", "List", "Section", "Group", "Data", "Date", "URL", "Error",
+        "String", "Int", "Double", "Bool", "Array", "Set", "Dictionary", "Result", "Task", "Timer", "Notification", "Path",
+        "Shape", "Canvas", "Window", "App", "Scene", "State", "Binding", "Context", "Coordinator", "Style", "Options", "Config",
+        "Event", "Action", "Node", "Edge", "Point", "Size", "Rect", "Key", "Kind", "Item", "Row", "Column", "Model", "Status",
+        "Props", "Component", "Request", "Response", "Client", "Server", "Router", "Store", "Logger", "Message", "Object",
+    ]
 
     /// Capitalized identifiers, the way types are written in these languages.
     static func capitalizedWords(in text: String) -> Set<String> {
