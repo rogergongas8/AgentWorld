@@ -166,6 +166,11 @@ final class AppModel: ObservableObject {
 
     var allSessions: [TerminalSession] { tabs.flatMap(\.sessions) }
 
+    /// The panes `lead` opened to help it, oldest first.
+    func helpers(of lead: TerminalSession) -> [TerminalSession] {
+        allSessions.filter { $0.openedBy === lead }
+    }
+
     /// A CLI's configuration for a folder, rescanned every 15 s.
     func config(_ provider: Provider, in folder: String) -> AgentConfiguration {
         let key = provider.id + "|" + folder

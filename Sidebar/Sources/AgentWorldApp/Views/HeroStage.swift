@@ -55,6 +55,18 @@ struct PanelStage: View {
             HStack(alignment: .bottom, spacing: 2) {
                 PixelImage(canvas: mainCanvas(now: now, t: t), scale: 3)
                     .help(session.map { "\($0.label): \($0.status.text)" } ?? "Pick a CLI to start")
+                // The panes it opened with agentworld-ctl, beside it.
+                ForEach(paneHelpers) { helper in
+                    let arriving = now.timeIntervalSince(helper.startedAt)
+                    PixelImage(canvas: helperCanvas(helper, now: now, t: t), scale: 2)
+                        .offset(x: arriving < Self.walkIn ? CGFloat(1 - arriving / Self.walkIn) * 160 : 0)
+                        .overlay(alignment: .bottom) {
+                            Text("#\(helper.number)").font(.mono(8.5, .semibold)).foregroundStyle(Palette.cream.opacity(0.8)).offset(y: 9)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { model.reveal(helper) }
+                        .help("#\(helper.number) \(helper.label), helping: \(helper.status.text). Click to see its pane.")
+                }
                 Spacer(minLength: 4)
                 ForEach(Array(crew.enumerated()), id: \.element.qualifiedName) { index, agent in
                     let working = helpers.first { $0.type == agent.name || $0.type.hasSuffix(":" + agent.name) }
@@ -82,17 +94,50 @@ struct PanelStage: View {
         .clipped()
     }
 
-    /// Working helpers first, then the rest, up to what fits.
+    /// Working helpers first, then the rest, up to what fits beside the pane helpers.
     private var crew: [AgentDefinition] {
         let working = Set((session?.store?.runningSubagents ?? []).map(\.type))
         let sorted = agents.filter { working.contains($0.name) } + agents.filter { !working.contains($0.name) }
-        return Array(sorted.prefix(Self.maxCrew))
+        return Array(sorted.prefix(max(1, Self.maxCrew - paneHelpers.count * 2)))
+    }
+
+    /// Up to two panes this one opened, newest last.
+    private var paneHelpers: [TerminalSession] {
+        guard let session else { return [] }
+        return Array(model.helpers(of: session).suffix(2))
+    }
+
+    /// How long a new helper takes to walk over.
+    private static let walkIn: TimeInterval = 2.4
+    /// How long a lead and helper celebrate once the helper is done.
+    private static let partyFor: TimeInterval = 5
+
+    private func justFinished(_ helper: TerminalSession, now: Date) -> Bool {
+        helper.finishedAt.map { now.timeIntervalSince($0) < Self.partyFor } ?? false
+    }
+
+    private func helperCanvas(_ helper: TerminalSession, now: Date, t: TimeInterval) -> PixelCanvas {
+        let arriving = now.timeIntervalSince(helper.startedAt)
+        let pose: Pose
+        if arriving < Self.walkIn {
+            pose = Animator.walking(frame: Int(t * 8))
+        } else if justFinished(helper, now: now) {
+            pose = Animator.celebrate(elapsed: now.timeIntervalSince(helper.finishedAt ?? now), frame: Int(t * 8))
+        } else {
+            let activity = helper.activity
+            pose = Animator.pose(status: activity.status, flavor: activity.flavor, elapsed: now.timeIntervalSince(activity.since),
+                                 t: t, seed: helper.number, recentError: false)
+        }
+        return StageActor.canvas(helper.provider.figure, pose: pose)
     }
 
     private func mainCanvas(now: Date, t: TimeInterval) -> PixelCanvas {
         let figure = session?.provider.figure ?? Provider.claude.figure
         let pose: Pose
-        if let session {
+        if let done = paneHelpers.first(where: { justFinished($0, now: now) }) {
+            // A helper just delivered: the lead celebrates with it.
+            pose = Animator.celebrate(elapsed: now.timeIntervalSince(done.finishedAt ?? now), frame: Int(t * 8))
+        } else if let session {
             let activity = session.activity
             pose = Animator.pose(status: activity.status, flavor: activity.flavor, elapsed: now.timeIntervalSince(activity.since),
                                  t: t, seed: session.label.count, recentError: false)
@@ -158,6 +203,10 @@ struct PanelStage: View {
 
     private func headline(now: Date) -> String {
         guard let session else { return "Pick a CLI to start" }
+        if let done = paneHelpers.last(where: { justFinished($0, now: now) }) { return "#\(done.number) \(done.label) is done!" }
+        if let arriving = paneHelpers.last(where: { now.timeIntervalSince($0.startedAt) < Self.walkIn }) {
+            return "#\(arriving.number) \(arriving.label) joins"
+        }
         let activity = session.activity
         let elapsed = now.timeIntervalSince(activity.since)
         if session.status.tone == .ended { return "Finished" }

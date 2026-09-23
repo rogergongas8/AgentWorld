@@ -99,12 +99,14 @@ enum ControlServer {
             let wantsTab = args.contains("--tab")
             if !wantsTab, let caller, let tab = model.tabs.first(where: { $0.sessions.contains { $0 === caller } }),
                let session = model.addPane(profile, to: tab, focus: false) {
+                session.openedBy = caller
                 if let prompt { session.sendWhenReady(prompt, submit: true) }
                 return ok("#\(session.number)")
             }
             guard let session = model.launch(profile, in: folder, typing: prompt, submitTyping: true) else {
                 return fail("couldn't open \(profile.provider.name)")
             }
+            session.openedBy = caller
             return ok("#\(session.number)" + (wantsTab || caller == nil ? "" : " (in a new tab: no room beside you)"))
 
         case "send":

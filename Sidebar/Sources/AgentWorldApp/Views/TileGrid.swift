@@ -204,6 +204,9 @@ struct TilePane: View {
                 if case .exited = session.health {
                     EndedOverlay(session: session)
                 }
+                if let lead = session.openedBy {
+                    ArrivalOverlay(session: session, lead: lead)
+                }
             }
         }
         .background(Palette.terminalBackground)
@@ -227,5 +230,43 @@ struct PaneButton: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(help)
+    }
+}
+
+/// A helper opened by another pane walks in over its terminal for a moment:
+/// who it is and who called it.
+struct ArrivalOverlay: View {
+    @ObservedObject var session: TerminalSession
+    let lead: TerminalSession
+    static let lasts: TimeInterval = 3.2
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 20)) { context in
+            let elapsed = context.date.timeIntervalSince(session.startedAt)
+            if elapsed < Self.lasts {
+                let walk = min(1, elapsed / 2.2)
+                let fade = elapsed > Self.lasts - 0.5 ? (Self.lasts - elapsed) / 0.5 : 1
+                GeometryReader { geometry in
+                    HStack(alignment: .bottom, spacing: 10) {
+                        PixelImage(canvas: StageActor.canvas(session.provider.figure,
+                                                             pose: walk < 1 ? Animator.walking(frame: Int(elapsed * 8)) : Animator.waving(t: elapsed)),
+                                   scale: 3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("#\(session.number) \(session.label)").font(.mono(12, .semibold)).foregroundStyle(session.provider.swiftColor)
+                            Text("here to help \(lead.label)").font(.mono(10.5)).foregroundStyle(Palette.muted)
+                        }
+                        .padding(.bottom, 8)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Palette.panel.opacity(0.92)))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(session.provider.swiftColor.opacity(0.4)))
+                    .offset(x: -220 + CGFloat(walk) * (220 + 16), y: geometry.size.height - 110)
+                }
+                .opacity(fade)
+            }
+        }
+        // It walks in from this pane's edge, not over its neighbor.
+        .clipped()
+        .allowsHitTesting(false)
     }
 }

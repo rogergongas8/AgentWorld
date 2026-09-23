@@ -47,6 +47,12 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         let at: Date
     }
 
+    /// The pane that opened this one with `agentworld-ctl open`: its lead.
+    weak var openedBy: TerminalSession?
+    /// When it last finished a stretch of work (busy → your turn or ended),
+    /// for the celebration on its lead's stage.
+    private(set) var finishedAt: Date?
+
     /// Test hook (DebugControl `act`): pretend to be doing something.
     var forcedActivity: (ActorStatus, String?)?
 
@@ -187,7 +193,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         feed?.poll()
         codex?.poll(now: now)
         let next = computeStatus(now: now)
-        if next != status { status = next }
+        if next != status {
+            if status.tone == .busy, next.tone == .needsYou || next.tone == .ended { finishedAt = now }
+            status = next
+        }
         let (actor, action) = currentActivity()
         let flavor = Flavor.from(action: action, status: actor)
         if actor != activity.status || flavor != activity.flavor {
