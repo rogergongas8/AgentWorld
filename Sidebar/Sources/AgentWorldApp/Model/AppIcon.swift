@@ -1,92 +1,158 @@
-import AgentWorldArt
-import AgentWorldKit
 import AppKit
+import CoreGraphics
 import Foundation
-import TerminalUI
 
-/// Draws the app icon from the same pixel art: a terminal window with three
-/// crew members inside, for any CLI (no brand's character). Used by
-/// `scripts/build-app.sh` through `AgentWorldApp --render-icon <dir.iconset>`.
+/// The app icon, drawn as vectors at every size macOS asks for: a terminal
+/// prompt (`›_`, any CLI or a plain shell) inside an orbit (the world) with
+/// three agents traveling on it. It fills Apple's icon squircle exactly, so
+/// macOS doesn't set it on a grey plate. Used by `scripts/build-app.sh`
+/// through `AgentWorldApp --render-icon <dir.iconset>`.
 enum AppIcon {
-    /// Candidate crew for the icon, side by side (`--render-crew <png>`), to pick contrasting colors.
-    static func renderCandidates(_ names: [String], to path: String) {
-        var p = PixelCanvas(width: names.count * 12 + 2, height: 16)
-        for (index, name) in names.enumerated() {
-            _ = CharacterPainter.drawCrew(on: &p, look: CharacterLook(name: name), x: 1 + index * 12, ground: 15, pose: Pose())
-        }
-        if let image = p.cgImage(factor: 12) {
-            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
-        }
-    }
-
     static func renderIconset(to directory: String) {
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-        let art = canvas()
         for size in [16, 32, 128, 256, 512] {
             for retina in [1, 2] {
                 let pixels = size * retina
-                let factor = max(1, pixels / art.width)
-                guard let image = art.cgImage(factor: factor) else { continue }
-                let rep = NSBitmapImageRep(cgImage: image)
-                // Nearest-neighbour resample to the exact size macOS wants.
-                let target = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8,
-                                              samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                              bytesPerRow: 0, bitsPerPixel: 0)!
-                NSGraphicsContext.saveGraphicsState()
-                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: target)
-                NSGraphicsContext.current?.imageInterpolation = .none
-                rep.draw(in: NSRect(x: 0, y: 0, width: pixels, height: pixels))
-                NSGraphicsContext.restoreGraphicsState()
+                guard let image = render(pixels: pixels) else { continue }
                 let name = "icon_\(size)x\(size)" + (retina == 2 ? "@2x" : "") + ".png"
-                try? target.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: directory).appendingPathComponent(name))
+                try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                    .write(to: URL(fileURLWithPath: directory).appendingPathComponent(name))
             }
         }
     }
 
-    /// Any CLI, not one: a terminal window with its prompt, and three
-    /// crew members of no particular brand standing inside it. A margin
-    /// around the window, like every macOS icon.
-    static func canvas() -> PixelCanvas {
-        let size = 48, o = 4, w = 40
-        var p = PixelCanvas(width: size, height: size)
-        let tile = RGB(hex: 0x0D1014)
-        let bar = RGB(hex: 0x222831)
-        p.rect(x: o, y: o, width: w, height: w, tile)
-        // Title bar with the three buttons.
-        p.rect(x: o, y: o, width: w, height: 6, bar)
-        for (index, color) in [0xFF5F57, 0xFEBC2E, 0x28C840].enumerated() {
-            p.rect(x: o + 3 + index * 4, y: o + 2, width: 2, height: 2, RGB(hex: UInt32(color)))
-        }
-        // The prompt: "›" and a cursor.
-        let prompt = RGB(hex: 0x56D364)
-        for (x, y) in [(0, 0), (1, 1), (2, 2), (1, 3), (0, 4)] { p[o + 3 + x, o + 9 + y] = prompt }
-        p.rect(x: o + 8, y: o + 13, width: 5, height: 1, Theme.cream)
-        // Three of the crew, each its own color, on a line of ground.
-        let ground = o + w - 4
-        p.rect(x: o, y: ground, width: w, height: 1, RGB(hex: 0x3FA34D))
-        p.rect(x: o, y: ground + 1, width: w, height: 3, RGB(hex: 0x6B4F3A))
-        let crew = ["tester", "scout", "runner"].map(CharacterLook.init(name:))
-        let poses = [Pose(), Pose(leftArm: .up, rightArm: .up, eyes: .happy), Animator.waving(t: 0.2)]
-        for (index, look) in crew.enumerated() {
-            _ = CharacterPainter.drawCrew(on: &p, look: look, x: o + 3 + index * 12, ground: ground, pose: poses[index])
-        }
-        roundCorners(&p, x: o, y: o, size: w)
-        return p
+    /// The icon at `pixels` × `pixels`, drawn on Apple's 1024-point grid.
+    static func render(pixels: Int) -> CGImage? {
+        guard let context = CGContext(data: nil, width: pixels, height: pixels, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let scale = CGFloat(pixels) / 1024
+        context.scaleBy(x: scale, y: scale)
+        // Top-left origin, like the design grid.
+        context.translateBy(x: 0, y: 1024)
+        context.scaleBy(x: 1, y: -1)
+        context.setShouldAntialias(true)
+        context.interpolationQuality = .high
+        draw(in: context, detailed: pixels >= 64)
+        return context.makeImage()
     }
 
-    /// Clips a 3-pixel rounding off each corner of the square at (x, y).
-    private static func roundCorners(_ p: inout PixelCanvas, x: Int, y: Int, size: Int) {
-        let cut = [(0, 0), (1, 0), (2, 0), (0, 1), (0, 2)]
-        for (dx, dy) in cut {
-            p[x + dx, y + dy] = nil
-            p[x + size - 1 - dx, y + dy] = nil
-            p[x + dx, y + size - 1 - dy] = nil
-            p[x + size - 1 - dx, y + size - 1 - dy] = nil
+    // MARK: - Drawing (1024 × 1024, top-left origin)
+
+    private static func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
+        CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
+    }
+
+    private static func gradient(_ colors: [CGColor]) -> CGGradient {
+        CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!, colors: colors as CFArray, locations: nil)!
+    }
+
+    /// Apple's macOS icon shape: an 824-point rounded square with smooth
+    /// (continuous) corners, centered on the 1024 canvas.
+    static func squircle() -> CGPath {
+        let rect = CGRect(x: 100, y: 100, width: 824, height: 824)
+        return NSBezierPath(roundedRect: rect, xRadius: 186, yRadius: 186).cgPathCompat
+    }
+
+    private static func draw(in context: CGContext, detailed: Bool) {
+        let shape = squircle()
+
+        // Background: deep night, lighter at the top.
+        context.saveGState()
+        context.addPath(shape)
+        context.clip()
+        context.drawLinearGradient(gradient([color(0x262B55), color(0x10132A), color(0x07080F)]),
+                                   start: CGPoint(x: 512, y: 100), end: CGPoint(x: 512, y: 924), options: [])
+        // A soft glow behind the prompt.
+        context.drawRadialGradient(gradient([color(0x6D5DF6, 0.35), color(0x6D5DF6, 0)]),
+                                   startCenter: CGPoint(x: 512, y: 550), startRadius: 0,
+                                   endCenter: CGPoint(x: 512, y: 550), endRadius: 400, options: [])
+        context.restoreGState()
+
+        // The orbit: a tilted ellipse around the prompt.
+        let orbitCenter = CGPoint(x: 512, y: 570)
+        let tilt: CGFloat = -0.32
+        let radii = CGSize(width: 340, height: 132)
+        var orbit = CGAffineTransform(translationX: orbitCenter.x, y: orbitCenter.y).rotated(by: tilt)
+        let ellipse = CGPath(ellipseIn: CGRect(x: -radii.width, y: -radii.height, width: radii.width * 2, height: radii.height * 2),
+                             transform: &orbit)
+        context.saveGState()
+        context.addPath(ellipse)
+        context.setLineWidth(detailed ? 18 : 26)
+        context.setStrokeColor(color(0xFFFFFF, detailed ? 0.22 : 0.3))
+        context.strokePath()
+        context.restoreGState()
+
+        // The prompt: a bold chevron and a cursor, in a teal → violet gradient.
+        let chevron = CGMutablePath()
+        chevron.move(to: CGPoint(x: 336, y: 416))
+        chevron.addLine(to: CGPoint(x: 484, y: 552))
+        chevron.addLine(to: CGPoint(x: 336, y: 688))
+        let stroke = chevron.copy(strokingWithWidth: 82, lineCap: .round, lineJoin: .round, miterLimit: 10)
+        let cursor = CGPath(roundedRect: CGRect(x: 540, y: 646, width: 190, height: 66), cornerWidth: 33, cornerHeight: 33, transform: nil)
+        let glyphs = CGMutablePath()
+        glyphs.addPath(stroke)
+        glyphs.addPath(cursor)
+        // A shadow so the glyph lifts off the orbit.
+        context.saveGState()
+        context.setShadow(offset: CGSize(width: 0, height: 10), blur: 30, color: color(0x000000, 0.5))
+        context.addPath(glyphs)
+        context.setFillColor(color(0x5EEAD4))
+        context.fillPath()
+        context.restoreGState()
+        context.saveGState()
+        context.addPath(glyphs)
+        context.clip()
+        context.drawLinearGradient(gradient([color(0x5EEAD4), color(0x8B9CFF), color(0xB794F6)]),
+                                   start: CGPoint(x: 330, y: 410), end: CGPoint(x: 730, y: 710), options: [])
+        context.restoreGState()
+
+        // Three agents on the orbit, each its own color, ringed in the night.
+        // Left, top right and right: around the prompt, never on it.
+        let agents: [(angle: CGFloat, hex: UInt32)] = [(-2.3, 0xF472B6), (-0.6, 0xFBBF24), (0.45, 0x34D399)]
+        for agent in agents {
+            let local = CGPoint(x: cos(agent.angle) * radii.width, y: sin(agent.angle) * radii.height)
+            let point = local.applying(CGAffineTransform(translationX: orbitCenter.x, y: orbitCenter.y).rotated(by: tilt))
+            let radius: CGFloat = detailed ? 40 : 56
+            let ring: CGFloat = detailed ? 8 : 12
+            context.addEllipse(in: CGRect(x: point.x - radius - ring, y: point.y - radius - ring, width: (radius + ring) * 2, height: (radius + ring) * 2))
+            context.setFillColor(color(0x0B0D1A))
+            context.fillPath()
+            context.saveGState()
+            context.addEllipse(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
+            context.clip()
+            context.drawRadialGradient(gradient([color(0xFFFFFF, 0.9), color(agent.hex), color(agent.hex)]),
+                                       startCenter: CGPoint(x: point.x - radius * 0.35, y: point.y - radius * 0.35), startRadius: 0,
+                                       endCenter: point, endRadius: radius, options: [.drawsAfterEndLocation])
+            context.restoreGState()
         }
-        // A softer edge: the pixel just inside each corner.
-        p[x + 1, y + 1] = nil
-        p[x + size - 2, y + 1] = nil
-        p[x + 1, y + size - 2] = nil
-        p[x + size - 2, y + size - 2] = nil
+
+        // A fine light edge along the top, like glass.
+        context.saveGState()
+        context.addPath(shape)
+        context.setLineWidth(4)
+        context.setStrokeColor(color(0xFFFFFF, 0.08))
+        context.strokePath()
+        context.restoreGState()
+    }
+}
+
+private extension NSBezierPath {
+    /// `cgPath` arrived in macOS 14; this builds the same path on macOS 13.
+    var cgPathCompat: CGPath {
+        let path = CGMutablePath()
+        var points = [NSPoint](repeating: .zero, count: 3)
+        for index in 0..<elementCount {
+            switch element(at: index, associatedPoints: &points) {
+            case .moveTo: path.move(to: points[0])
+            case .lineTo: path.addLine(to: points[0])
+            case .curveTo, .cubicCurveTo: path.addCurve(to: points[2], control1: points[0], control2: points[1])
+            case .quadraticCurveTo: path.addQuadCurve(to: points[1], control: points[0])
+            case .closePath: path.closeSubpath()
+            @unknown default: break
+            }
+        }
+        return path
     }
 }
