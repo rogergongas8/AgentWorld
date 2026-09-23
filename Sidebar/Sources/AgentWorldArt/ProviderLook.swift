@@ -16,6 +16,7 @@ extension Provider {
         case .grok: "Grok"
         case .opencode: "OpenCode"
         case .cursor: "Cursor"
+        case .kiro: "Kiro"
         case .terminal: "Terminal"
         }
     }
@@ -29,6 +30,7 @@ extension Provider {
         case .grok: RGB(hex: 0xE6EDF3)
         case .opencode: RGB(hex: 0xF0B429)
         case .cursor: RGB(hex: 0xA0AEC0)
+        case .kiro: RGB(hex: 0x9A7BFF)
         case .terminal: RGB(hex: 0x56D364)
         }
     }
@@ -55,6 +57,8 @@ extension Provider {
         case .cursor:
             .crew(CharacterLook(body: RGB(hex: 0x2D3748), hair: RGB(hex: 0x111418), skin: RGB(hex: 0x8D5524),
                                 accent: RGB(hex: 0xE2E8F0), headgear: .bare, face: .visor))
+        case .kiro:
+            .ghost
         case .terminal:
             // A little robot: metal body, green visor.
             .crew(CharacterLook(body: RGB(hex: 0x9DA5B4), hair: RGB(hex: 0x6B7280), skin: RGB(hex: 0xC9D1D9),

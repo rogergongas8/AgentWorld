@@ -173,6 +173,33 @@ extension ProviderScanner {
     }
 }
 
+extension ProviderScanner {
+    /// Kiro CLI: `~/.kiro` like the others (skills, MCP in settings/mcp.json),
+    /// plus its agents, which are JSON files (`agents/<name>.json`) with a
+    /// name, description, model, tools and resources.
+    func scanKiro() -> AgentConfiguration {
+        let base = scanGeneric(home: ".kiro", project: ".kiro", mcpFiles: ["settings/mcp.json"])
+        var agents = base.agents
+        let folders = [(projectURL.appendingPathComponent(".kiro/agents"), ConfigScope.project),
+                       (homeURL.appendingPathComponent(".kiro/agents"), .user)]
+        for (folder, scope) in folders {
+            let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.pathExtension == "json" {
+                guard let json = jsonObject(at: file) else { continue }
+                agents.append(AgentDefinition(
+                    name: json["name"] as? String ?? file.deletingPathExtension().lastPathComponent,
+                    description: json["description"] as? String,
+                    model: json["model"] as? String,
+                    scope: scope,
+                    tools: json["tools"] as? [String] ?? [],
+                    path: file.path))
+            }
+        }
+        return AgentConfiguration(model: base.model, agents: deduplicated(agents, by: \.qualifiedName).sorted(by: nameThenScope),
+                                  skills: base.skills, mcpServers: base.mcpServers, commands: base.commands, repository: base.repository)
+    }
+}
+
 /// Just enough TOML for CLI config files: `[table]` / `[a."b.c"]` headers and
 /// single-line `key = value` pairs. Arrays and inline tables are kept as raw
 /// text; multi-line strings are skipped.

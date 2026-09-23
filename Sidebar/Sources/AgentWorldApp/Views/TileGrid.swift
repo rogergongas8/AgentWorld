@@ -7,6 +7,7 @@ import SwiftUI
 struct TileGrid: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var tab: TerminalTab
+    @ObservedObject private var preferences = Preferences.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +25,23 @@ struct TileGrid: View {
         if let zoomed = sessions.first(where: { $0.id == tab.zoomedID }) {
             TilePane(tab: tab, session: zoomed, showsHeader: sessions.count > 1)
         } else if sessions.count == 1, let only = sessions.first {
-            TilePane(tab: tab, session: only, showsHeader: false)
+            // A lone terminal gets its little theater beside it, room permitting.
+            GeometryReader { geometry in
+                HStack(spacing: 1) {
+                    TilePane(tab: tab, session: only, showsHeader: false)
+                    if preferences.showsStories, geometry.size.width > 900 {
+                        StoryStage(session: only)
+                            .frame(width: CGFloat(Stories.width * 4) + 24)
+                            .overlay(alignment: .topTrailing) {
+                                PaneButton(symbol: "xmark", help: "Hide the stories (Settings › General brings them back)") {
+                                    preferences.showsStories = false
+                                }
+                                .padding(6)
+                            }
+                            .transition(.move(edge: .trailing))
+                    }
+                }
+            }
         } else if tab.layout == .main {
             let lead = model.focusedSession.flatMap { focused in sessions.first { $0.id == focused.id } } ?? sessions[0]
             let rest = sessions.filter { $0.id != lead.id }

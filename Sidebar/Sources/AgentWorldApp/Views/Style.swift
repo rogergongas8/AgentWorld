@@ -137,13 +137,9 @@ struct PortraitView: View {
     }
 
     static func canvas(_ figure: CharacterFigure, pose: Pose) -> PixelCanvas {
-        let size = figure.isClaude ? CharacterPainter.claudeSize : CharacterPainter.crewSize
-        var pixels = PixelCanvas(width: size.width + 2, height: size.height + 3)
-        let ground = pixels.height - 1
-        switch figure {
-        case .claude: CharacterPainter.drawClaude(on: &pixels, x: 1, ground: ground, pose: pose)
-        case .crew(let look): CharacterPainter.drawCrew(on: &pixels, look: look, x: 1, ground: ground, pose: pose)
-        }
+        let size = figure.size
+        var pixels = PixelCanvas(width: size.width + 3, height: size.height + 3)
+        CharacterPainter.draw(figure, on: &pixels, x: 1, ground: pixels.height - 1, pose: pose)
         return pixels
     }
 }

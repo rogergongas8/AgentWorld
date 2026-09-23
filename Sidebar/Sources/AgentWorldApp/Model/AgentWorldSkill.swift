@@ -85,7 +85,7 @@ enum AgentWorldSkill {
     /// (the same folders the panel reads skills from).
     static let homes: [(name: String, folder: String)] = [
         ("Claude Code", ".claude"), ("Codex", ".codex"), ("Gemini CLI", ".gemini"), ("Kimi CLI", ".kimi"),
-        ("Grok CLI", ".grok"), ("OpenCode", ".config/opencode"), ("Cursor Agent", ".cursor"),
+        ("Grok CLI", ".grok"), ("OpenCode", ".config/opencode"), ("Cursor Agent", ".cursor"), ("Kiro CLI", ".kiro"),
     ]
     static var skillHomes: [String] { homes.map(\.folder) }
 

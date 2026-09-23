@@ -21,6 +21,8 @@ public enum Face {
             CharacterPainter.drawClaude(on: &pixels, x: -3, ground: CharacterPainter.claudeSize.height, pose: pose)
         case .crew(let look):
             CharacterPainter.drawCrew(on: &pixels, look: look, x: 0, ground: CharacterPainter.crewSize.height, pose: pose)
+        case .ghost:
+            CharacterPainter.drawGhost(on: &pixels, x: -1, ground: CharacterPainter.ghostSize.height - 1, pose: pose)
         }
         return pixels
     }

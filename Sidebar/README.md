@@ -1,7 +1,7 @@
 # AgentWorld
 
 A macOS app for your agent CLIs — Claude Code, Codex, Gemini CLI, Kimi CLI,
-Grok, OpenCode, Cursor Agent, or a plain shell — side by side in real
+Grok, OpenCode, Cursor Agent, Kiro CLI, or a plain shell — side by side in real
 terminals, each with a map of its agents, skills, plugins and MCP servers,
 and pixel characters acting out what they're doing.
 
@@ -23,6 +23,13 @@ and pixel characters acting out what they're doing.
   they walk in, work, and celebrate with their lead when done.
 - **Usage**: tokens today in the title bar; by CLI, day and session in its
   popover (Claude Code, Codex with its plan window, Gemini CLI).
+- **Stories**: a lone terminal gets a little theater beside it. The CLI's
+  character (Claude's block, Kiro's ghost, Codex's visor…) acts out what it's
+  doing, a crew member brings over the skill it reaches for, helpers work
+  alongside; idle, stories take turns: a ball game, a coffee break, a nap,
+  stargazing, a campfire, a bright idea, Kiro's "boo!".
+- **Getting around**: ⌃Tab switches terminals like ⌘Tab switches apps;
+  ⌘1…9 go to tabs (hold ⌘ to see the numbers).
 - **Settings** (⌘,): terminal font, notifications, which CLIs show, launch
   profiles, open at login.
 

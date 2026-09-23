@@ -17,6 +17,8 @@ final class Preferences: ObservableObject {
     @Published var confirmClosingBusy: Bool { didSet { defaults.set(confirmClosingBusy, forKey: "confirmClosingBusy") } }
     /// The live crew at the foot of the workspaces column.
     @Published var showsLiveCrew: Bool { didSet { defaults.set(showsLiveCrew, forKey: "showsLiveCrew") } }
+    /// The little theater beside a lone terminal.
+    @Published var showsStories: Bool { didSet { defaults.set(showsStories, forKey: "showsStories") } }
 
     // MARK: Terminal
 
@@ -57,6 +59,7 @@ final class Preferences: ObservableObject {
             "projectsFolder": Self.suggestedProjectsFolder,
             "confirmClosingBusy": true,
             "showsLiveCrew": true,
+            "showsStories": true,
             "terminalFont": "",
             "terminalFontSize": 13.0,
             "optionAsMeta": false,
@@ -70,6 +73,7 @@ final class Preferences: ObservableObject {
         projectsFolder = defaults.string(forKey: "projectsFolder") ?? Self.suggestedProjectsFolder
         confirmClosingBusy = defaults.bool(forKey: "confirmClosingBusy")
         showsLiveCrew = defaults.bool(forKey: "showsLiveCrew")
+        showsStories = defaults.bool(forKey: "showsStories")
         fontName = defaults.string(forKey: "terminalFont") ?? ""
         fontSize = defaults.double(forKey: "terminalFontSize")
         optionAsMeta = defaults.bool(forKey: "optionAsMeta")

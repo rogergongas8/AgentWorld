@@ -4,7 +4,7 @@ import Foundation
 /// Each has its own config layout (read by `ProviderScanner`) and character.
 public struct Provider: Sendable, Hashable, Identifiable {
     public enum Kind: String, CaseIterable, Sendable {
-        case claude, codex, gemini, kimi, grok, opencode, cursor
+        case claude, codex, gemini, kimi, grok, opencode, cursor, kiro
         /// A plain shell: no agent, just a terminal in the workspace.
         case terminal
     }
@@ -73,6 +73,13 @@ public struct Provider: Sendable, Hashable, Identifiable {
         installHint: "curl https://cursor.com/install -fsS | bash",
         followsLiveSessions: false
     )
+    public static let kiro = Provider(
+        kind: .kiro, name: "Kiro CLI", command: "kiro-cli",
+        tagline: "Kiro's agent in the terminal",
+        instructionsFiles: ["AGENTS.md"],
+        installHint: "curl -fsSL https://cli.kiro.dev/install | bash",
+        followsLiveSessions: false
+    )
     public static let terminal = Provider(
         kind: .terminal, name: "Terminal", command: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh",
         tagline: "A plain shell in this workspace",
@@ -81,7 +88,7 @@ public struct Provider: Sendable, Hashable, Identifiable {
         followsLiveSessions: false
     )
 
-    public static let all: [Provider] = [.claude, .codex, .gemini, .kimi, .grok, .opencode, .cursor, .terminal]
+    public static let all: [Provider] = [.claude, .codex, .gemini, .kimi, .grok, .opencode, .cursor, .kiro, .terminal]
 
     /// Whether it's an agent CLI (everything but the plain terminal).
     public var isAgent: Bool { kind != .terminal }

@@ -46,6 +46,7 @@ struct GeneralSettings: View {
                     .disabled(!preferences.canStartAtLogin)
                 Toggle("Ask before closing an agent that's still working", isOn: $preferences.confirmClosingBusy)
                 Toggle("Show the live crew under the workspaces", isOn: $preferences.showsLiveCrew)
+                Toggle("Show stories beside a lone terminal", isOn: $preferences.showsStories)
             } footer: {
                 if !preferences.canStartAtLogin {
                     Text("Opening at login needs the installed app (make app), not a bare build.").settingsFootnote()

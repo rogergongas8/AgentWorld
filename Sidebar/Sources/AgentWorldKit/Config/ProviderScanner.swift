@@ -25,6 +25,7 @@ public struct ProviderScanner: Sendable {
         case .grok: scanGeneric(home: ".grok", project: ".grok", mcpFiles: ["user-settings.json", "settings.json"])
         case .opencode: scanGeneric(home: ".config/opencode", project: ".opencode", mcpFiles: ["opencode.json"], mcpKey: "mcp")
         case .cursor: scanGeneric(home: ".cursor", project: ".cursor", mcpFiles: ["mcp.json"])
+        case .kiro: scanKiro()
         case .terminal: AgentConfiguration(repository: scanRepository())
         }
     }

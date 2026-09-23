@@ -6,6 +6,17 @@ import TerminalUI
 public enum CharacterFigure: Sendable, Hashable {
     case claude
     case crew(CharacterLook)
+    /// Kiro's little ghost: floats, no legs, a wavy hem.
+    case ghost
+
+    /// How much room it takes, standing.
+    public var size: (width: Int, height: Int) {
+        switch self {
+        case .claude: CharacterPainter.claudeSize
+        case .crew: CharacterPainter.crewSize
+        case .ghost: CharacterPainter.ghostSize
+        }
+    }
 }
 
 /// Pixel-art icons for the explorer's detail pages. Each is 12×12 pixels

@@ -33,6 +33,10 @@ enum DebugControl {
             case "snapshot": snapshot(to: argument)
             case "panel": model.enterPanel()
             case "commit": model.showsCommit = true
+            case "render-stories":
+                if let image = Stories.contactSheet().cgImage(factor: 4) {
+                    try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
+                }
             case "map": model.openProjectMap()
             case "map-symbols": model.buildProjectMap(model.selectedFolder, symbols: argument != "off")
             case "map-select": model.mapFocus = argument

@@ -54,6 +54,61 @@ public enum CharacterPainter {
         return figure
     }
 
+    // MARK: - Any figure
+
+    public static let ghostSize = (width: 12, height: 13)
+
+    /// Draws whichever figure it is, standing on `ground` at `x`.
+    @discardableResult
+    public static func draw(_ figure: CharacterFigure, on canvas: inout PixelCanvas, x: Int, ground: Int, pose: Pose) -> Figure {
+        switch figure {
+        case .claude: drawClaude(on: &canvas, x: x, ground: ground, pose: pose)
+        case .crew(let look): drawCrew(on: &canvas, look: look, x: x, ground: ground, pose: pose)
+        case .ghost: drawGhost(on: &canvas, x: x, ground: ground, pose: pose)
+        }
+    }
+
+    // MARK: - Ghost (Kiro)
+
+    /// A round-topped ghost that floats a pixel above the ground, its wavy
+    /// hem rippling as it moves, with little arms and big eyes.
+    @discardableResult
+    public static func drawGhost(on canvas: inout PixelCanvas, x originX: Int, ground: Int, pose: Pose) -> Figure {
+        let x = originX + pose.dx
+        let top = ground - ghostSize.height + pose.dy - 1
+        let body = tinted(RGB(hex: 0xF1EEFF), pose.tint)
+        let shade = tinted(RGB(hex: 0xC9BEF5), pose.tint)
+        let eyes = RGB(hex: 0x3B2494)
+        // Head: a rounded dome.
+        canvas.rect(x: x + 4, y: top, width: 4, height: 1, body)
+        canvas.rect(x: x + 2, y: top + 1, width: 8, height: 1, body)
+        canvas.rect(x: x + 1, y: top + 2, width: 10, height: 1, body)
+        canvas.rect(x: x, y: top + 3, width: 12, height: 8, body)
+        canvas.rect(x: x, y: top + 9, width: 12, height: 2, shade)
+        // The hem: three scallops that shift with each step.
+        let phase = (pose.step ?? 0) % 2
+        for scallop in 0..<3 {
+            let sx = x + scallop * 4 + (phase == 0 ? 0 : 1)
+            canvas.rect(x: sx, y: top + 11, width: 3, height: 1, shade)
+            canvas[sx + 1, top + 12] = shade
+        }
+        // Little arms at the sides.
+        switch pose.leftArm {
+        case .up: canvas.rect(x: x - 1, y: top + 3, width: 1, height: 3, body)
+        case .forward: canvas.rect(x: x - 1, y: top + 6, width: 1, height: 2, body)
+        case .down: canvas.rect(x: x - 1, y: top + 6, width: 1, height: 2, shade)
+        }
+        switch pose.rightArm {
+        case .up: canvas.rect(x: x + 12, y: top + 3, width: 1, height: 3, body)
+        case .forward: canvas.rect(x: x + 12, y: top + 6, width: 1, height: 2, body)
+        case .down: canvas.rect(x: x + 12, y: top + 6, width: 1, height: 2, shade)
+        }
+        drawEyes(on: &canvas, positions: [x + 3, x + 8], row: top + 4, eyes: pose.eyes, height: 2, color: eyes)
+        let figure = Figure(x: x, top: top, width: ghostSize.width, height: ghostSize.height)
+        drawProps(pose.props, on: &canvas, around: figure)
+        return figure
+    }
+
     // MARK: - Crew
 
     @discardableResult
