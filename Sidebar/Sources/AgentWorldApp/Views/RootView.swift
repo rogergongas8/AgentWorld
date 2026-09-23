@@ -187,5 +187,9 @@ struct RunningSummary: View {
         .labelStyle(.titleAndIcon)
         .font(.mono(11))
         .imageScale(.small)
+        .lineLimit(1)
+        // A fixed slot: "1 open" → "1 working" → "1 need you" would otherwise
+        // shove every title-bar control beside it each time a status changes.
+        .frame(width: 180, alignment: .trailing)
     }
 }
