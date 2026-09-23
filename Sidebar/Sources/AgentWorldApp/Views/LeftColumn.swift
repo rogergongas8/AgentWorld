@@ -6,12 +6,14 @@ import SwiftUI
 /// Workspaces with their terminals, and the live crew below.
 struct LeftColumn: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var preferences = Preferences.shared
 
     var body: some View {
         VStack(spacing: 0) {
             // The traffic lights sit here; the rest of the strip moves the window.
             HStack(spacing: 0) {
                 WindowDragArea().frame(maxWidth: .infinity, maxHeight: .infinity)
+                ChromeButton(symbol: "gearshape", help: "Settings (⌘,)") { model.openSettings() }
                 SidebarToggle()
             }
             .padding(.horizontal, 8)
@@ -24,7 +26,7 @@ struct LeftColumn: View {
             }
             let sessions = model.allSessions
             // One terminal already has its character, big, on the right.
-            if sessions.count > 1 {
+            if sessions.count > 1, preferences.showsLiveCrew {
                 VStack(alignment: .leading, spacing: 6) {
                     SectionTitle(title: "Crew · live", color: Palette.live)
                         .padding(.horizontal, 12)

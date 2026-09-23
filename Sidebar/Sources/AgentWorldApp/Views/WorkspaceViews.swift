@@ -131,10 +131,7 @@ struct NewProjectSheet: View {
     @State private var problem: String?
     @FocusState private var firstField: Bool
 
-    static var defaultParent: String {
-        let developer = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Developer").path
-        return FileManager.default.fileExists(atPath: developer) ? developer : FileManager.default.homeDirectoryForCurrentUser.path
-    }
+    static var defaultParent: String { Preferences.shared.projectsFolder }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

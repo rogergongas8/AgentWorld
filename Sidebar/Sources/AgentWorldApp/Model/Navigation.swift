@@ -22,6 +22,33 @@ extension AppModel {
         tabs.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
     }
 
+    /// Closes `tab` from the UI: first asks, if an agent in it is still
+    /// working and Settings says to.
+    func requestClose(_ tab: TerminalTab) {
+        guard confirmsClosing(tab.sessions) else { return }
+        close(tab)
+    }
+
+    func requestClose(_ session: TerminalSession) {
+        guard confirmsClosing([session]) else { return }
+        close(session)
+    }
+
+    private func confirmsClosing(_ sessions: [TerminalSession]) -> Bool {
+        let busy = sessions.filter { $0.status.tone == .busy }
+        guard Preferences.shared.confirmClosingBusy, !busy.isEmpty else { return true }
+        let alert = NSAlert()
+        alert.messageText = busy.count == 1 ? "\(busy[0].label) is still working" : "\(busy.count) agents are still working"
+        alert.informativeText = "Closing ends the session and stops what it's doing."
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't ask again"
+        let closes = alert.runModal() == .alertFirstButtonReturn
+        if closes, alert.suppressionButton?.state == .on { Preferences.shared.confirmClosingBusy = false }
+        return closes
+    }
+
     /// Closes the tabs of `tab`'s folder other than it, or only those after it.
     func closeTabs(besides tab: TerminalTab, onlyAfter: Bool = false) {
         let open = tabs(in: tab.folder)
@@ -51,6 +78,15 @@ extension AppModel {
         if let session = selectedTab?.sessions.first, !showsLauncher { DispatchQueue.main.async { session.focus() } }
     }
 
+    /// Opens Settings through the app menu's own item: on macOS 13 SwiftUI
+    /// offers no call for it, and the item doesn't answer the usual selector.
+    func openSettings() {
+        guard let menu = NSApp.mainMenu?.items.first?.submenu,
+              let index = menu.items.firstIndex(where: { $0.keyEquivalent == "," }) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        menu.performActionForItem(at: index)
+    }
+
     func chooseFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -67,8 +103,9 @@ extension AppModel {
 struct ShortcutsSheet: View {
     @Binding var isPresented: Bool
 
-    private let groups: [(String, [(String, String)])] = [
-        ("Workspaces", [("⌘O", "Add a workspace (folder)"), ("⌘⇧N", "New project…"), ("⌥⌘↑ / ⌥⌘↓", "Previous / next workspace")]),
+    static let groups: [(String, [(String, String)])] = [
+        ("Workspaces", [("⌘O", "Add a workspace (folder)"), ("⌘⇧N", "New project…"), ("⌥⌘↑ / ⌥⌘↓", "Previous / next workspace"),
+                        ("⌃⌘S", "Show or hide the workspaces")]),
         ("Terminals", [("⌘T", "Open a CLI (launcher: arrows + ↩)"), ("⌘⇧[ / ⌘⇧]", "Previous / next tab"),
                        ("⌥⌘← / ⌥⌘→", "Previous / next pane"), ("⌘1…9", "Jump to a pane"), ("⌘D", "Add a pane beside"),
                        ("⌘⇧Z", "Zoom the pane"), ("⌘W", "Close the tab")]),
@@ -76,7 +113,7 @@ struct ShortcutsSheet: View {
                          ("1-4", "Jump to a section"), ("↩", "Open the card"), ("u", "Use it in the terminal"),
                          ("e", "Change it (your CLI edits it)"), ("n", "New agent or skill"), ("esc", "Back to the terminal")]),
         ("Everything", [("⌘K", "Command palette"), ("⌘⇧K", "Kit: every CLI's skills, MCP, plugins"),
-                        ("⌥⌘I", "Show or hide the panel"), ("⌘/", "This sheet")]),
+                        ("⌥⌘I", "Show or hide the panel"), ("⌘,", "Settings"), ("⌘/", "This sheet")]),
     ]
 
     var body: some View {
@@ -101,7 +138,7 @@ struct ShortcutsSheet: View {
     }
 
     private func group(_ index: Int) -> some View {
-        let (title, rows) = groups[index]
+        let (title, rows) = Self.groups[index]
         return VStack(alignment: .leading, spacing: 6) {
             SectionTitle(title: title, color: Palette.claude)
             ForEach(rows, id: \.0) { key, label in

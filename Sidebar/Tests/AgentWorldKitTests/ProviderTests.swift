@@ -117,6 +117,29 @@ import Testing
         #expect(LaunchProfile.load(from: root.appendingPathComponent("missing.json")) == LaunchProfile.defaults)
     }
 
+    @Test func savedProfilesLoadBack() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("nested/profiles.json")
+        let custom = LaunchProfile(name: "Claude yolo", provider: .claude, args: ["--dangerously-skip-permissions"],
+                                   env: ["FOO": "bar"], isCustom: true)
+        try LaunchProfile.save(LaunchProfile.defaults + [custom], to: file)
+
+        let loaded = LaunchProfile.load(from: file)
+        #expect(loaded == LaunchProfile.defaults + [custom])
+        try LaunchProfile.save(LaunchProfile.defaults, to: file)
+        #expect(LaunchProfile.load(from: file) == LaunchProfile.defaults)
+    }
+
+    @Test func splitsArgumentsLikeAShell() {
+        #expect(LaunchProfile.splitArguments("--model opus  -p") == ["--model", "opus", "-p"])
+        #expect(LaunchProfile.splitArguments(#"--append-system-prompt "be brief" --x 'a b'"#) == ["--append-system-prompt", "be brief", "--x", "a b"])
+        #expect(LaunchProfile.splitArguments(#"--empty "" end"#) == ["--empty", "", "end"])
+        #expect(LaunchProfile.splitArguments("  ") == [])
+        let arguments = ["--model", "opus", "a b", ""]
+        #expect(LaunchProfile.splitArguments(LaunchProfile.joinArguments(arguments)) == arguments)
+    }
+
     @Test func locatesExecutablesOnPath() {
         #expect(Provider.locate("sh", environment: ["PATH": "/bin"]) == "/bin/sh")
         #expect(Provider.locate("/bin/sh") == "/bin/sh")

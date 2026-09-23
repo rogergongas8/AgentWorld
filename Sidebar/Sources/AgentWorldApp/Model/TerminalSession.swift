@@ -262,8 +262,15 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
 
     // MARK: - Look
 
+    /// Picks up a font or key change from Settings.
+    func restyle() {
+        let preferences = Preferences.shared
+        if terminal.font != preferences.terminalFont { terminal.font = preferences.terminalFont }
+        terminal.optionAsMetaKey = preferences.optionAsMeta
+    }
+
     private static func style(_ view: LocalProcessTerminalView) {
-        view.font = NSFont(name: "SF Mono", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        view.font = Preferences.shared.terminalFont
         // Plain sRGB colors: SwiftUI-bridged ones don't always resolve in AppKit drawing.
         let background = NSColor(rgb: Palette.terminalBackgroundRGB)
         view.nativeBackgroundColor = background
@@ -271,7 +278,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         view.caretColor = NSColor(rgb: Theme.claude)
         view.wantsLayer = true
         view.layer?.backgroundColor = background.cgColor
-        view.optionAsMetaKey = false
+        view.optionAsMetaKey = Preferences.shared.optionAsMeta
         // Installing a palette recomputes the defaults (to white): set the
         // background and text colors again right after.
         view.installColors(ansiPalette)

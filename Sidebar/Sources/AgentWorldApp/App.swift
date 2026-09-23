@@ -45,7 +45,7 @@ struct AgentWorldApp: App {
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                 Divider()
                 Button("Close Tab") {
-                    if let tab = model.selectedTab { model.close(tab) }
+                    if let tab = model.selectedTab { model.requestClose(tab) }
                 }
                 .keyboardShortcut("w")
             }
@@ -76,6 +76,9 @@ struct AgentWorldApp: App {
                 Button("Keyboard Shortcuts") { model.showsShortcuts.toggle() }
                     .keyboardShortcut("/")
             }
+        }
+        Settings {
+            SettingsView().environmentObject(model)
         }
     }
 }

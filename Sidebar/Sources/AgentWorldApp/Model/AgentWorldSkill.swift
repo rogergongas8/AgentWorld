@@ -82,4 +82,28 @@ enum AgentWorldSkill {
             try? text.write(to: file, atomically: true, encoding: .utf8)
         }
     }
+
+    /// Removes the copies AgentWorld installed; your own edited ones stay.
+    static func uninstall() {
+        for file in installedFiles() {
+            guard let text = try? String(contentsOf: file, encoding: .utf8), text.contains(marker) else { continue }
+            try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+        }
+    }
+
+    /// The CLIs here that have the skill, and whether it's AgentWorld's copy.
+    static func status() -> [(cli: String, installed: Bool, yours: Bool)] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return skillHomes.filter { FileManager.default.fileExists(atPath: home.appendingPathComponent($0).path) }.map { cli in
+            let file = home.appendingPathComponent(cli + "/skills/agentworld/SKILL.md")
+            let text = try? String(contentsOf: file, encoding: .utf8)
+            return (cli, text != nil, text.map { !$0.contains(marker) } ?? false)
+        }
+    }
+
+    private static func installedFiles() -> [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return skillHomes.map { home.appendingPathComponent($0 + "/skills/agentworld/SKILL.md") }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
 }

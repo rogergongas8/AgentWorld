@@ -163,4 +163,52 @@ public struct LaunchProfile: Sendable, Hashable, Identifiable {
         }
         return defaults + custom
     }
+
+    /// Splits a command line the way a shell would for plain arguments:
+    /// on spaces, keeping quoted text ('…' or "…") together.
+    public static func splitArguments(_ line: String) -> [String] {
+        var arguments: [String] = []
+        var current = ""
+        var quote: Character?
+        var started = false
+        for character in line {
+            if let open = quote {
+                if character == open { quote = nil } else { current.append(character) }
+            } else if character == "'" || character == "\"" {
+                quote = character
+                started = true
+            } else if character == " " || character == "\t" {
+                if started || !current.isEmpty { arguments.append(current) }
+                current = ""
+                started = false
+            } else {
+                current.append(character)
+            }
+        }
+        if started || !current.isEmpty { arguments.append(current) }
+        return arguments
+    }
+
+    /// The reverse of `splitArguments`, quoting what needs it.
+    public static func joinArguments(_ arguments: [String]) -> String {
+        arguments.map { argument in
+            argument.isEmpty || argument.contains(where: { $0 == " " || $0 == "\"" || $0 == "'" })
+                ? "'" + argument + "'" : argument
+        }.joined(separator: " ")
+    }
+
+    /// Writes the custom profiles among `profiles` to `url`, in the format
+    /// `load` reads; the defaults aren't stored.
+    public static func save(_ profiles: [LaunchProfile], to url: URL = configURL) throws {
+        let entries: [[String: Any]] = profiles.filter(\.isCustom).map { profile in
+            var entry: [String: Any] = ["name": profile.name, "provider": profile.provider.id]
+            if let command = profile.command, !command.isEmpty { entry["command"] = command }
+            if !profile.args.isEmpty { entry["args"] = profile.args }
+            if !profile.env.isEmpty { entry["env"] = profile.env }
+            return entry
+        }
+        let data = try JSONSerialization.data(withJSONObject: entries, options: [.prettyPrinted, .sortedKeys])
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+    }
 }

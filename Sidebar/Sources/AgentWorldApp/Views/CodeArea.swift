@@ -132,7 +132,7 @@ struct TabChip: View {
                 ForEach(tab.sessions) { session in TabStatusDot(session: session) }
             }
             Button {
-                model.close(tab)
+                model.requestClose(tab)
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 8.5, weight: .bold))
@@ -175,7 +175,7 @@ struct TabChip: View {
             DispatchQueue.main.async { tab.sessions.first?.focus() }
         }
         .contextMenu {
-            Button("Close Tab") { model.close(tab) }
+            Button("Close Tab") { model.requestClose(tab) }
             Button("Close Other Tabs") { model.closeTabs(besides: tab) }
             Button("Close Tabs to the Right") { model.closeTabs(besides: tab, onlyAfter: true) }
         }
@@ -255,7 +255,7 @@ struct SessionPane: View {
                     StatusDot(tone: session.status.tone)
                     Text(session.status.text).font(.mono(10)).foregroundStyle(Palette.faint).lineLimit(1)
                     Spacer()
-                    Button { model.close(session) } label: {
+                    Button { model.requestClose(session) } label: {
                         Image(systemName: "xmark").font(.system(size: 8.5, weight: .bold)).foregroundStyle(Palette.faint)
                     }
                     .buttonStyle(.plain)

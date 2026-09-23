@@ -12,6 +12,7 @@ import SwiftUI
 ///     launch-many <name>,<name>…  layout grid|columns|rows|main
 ///     broadcast <text>           zoom <pane index>|off
 ///     hittest <x> <y> <file>     which view a click there lands on
+///     settings                   open Settings; snapshot-key <png> shoots it
 @MainActor
 enum DebugControl {
     static func start(model: AppModel) {
@@ -30,9 +31,25 @@ enum DebugControl {
             let argument = parts.count > 1 ? parts[1] : ""
             switch parts.first {
             case "snapshot": snapshot(to: argument)
+            case "settings":
+                // settings [tab]: general, terminal, clis, notifications, integrations, shortcuts
+                if !argument.isEmpty { UserDefaults.standard.set(argument, forKey: "settingsTab") }
+                model.openSettings()
+            case "snapshot-key":
+                // The key window (Settings, a sheet's window) instead of the main one.
+                let main = NSApp.windows.first { $0.isVisible && $0.contentView != nil }
+                if let window = NSApp.windows.last(where: { $0.isVisible && $0 !== main && $0.frame.width > 200 }) ?? NSApp.keyWindow, let view = window.contentView?.superview ?? window.contentView,
+                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
+                }
             case "snapshot-layers": snapshotLayers(to: argument)
             case "snapshot-window": snapshotWindow(to: argument)
             case "dump": dump(model: model, to: argument)
+            case "windows":
+                let list = NSApp.windows.map { "\($0.title) visible=\($0.isVisible) key=\($0.isKeyWindow) \(Int($0.frame.width))x\(Int($0.frame.height))" }
+                let menu = (NSApp.mainMenu?.items.first?.submenu?.items ?? []).map { "menu: \($0.title) \($0.action.map(NSStringFromSelector) ?? "-")" }
+                try? (list + menu).joined(separator: "\n").write(toFile: argument, atomically: true, encoding: .utf8)
             case "hittest":
                 // hittest <x> <y> <file>: which view a click at x, y (points from the top left) lands on.
                 let words = argument.split(separator: " ").map(String.init)

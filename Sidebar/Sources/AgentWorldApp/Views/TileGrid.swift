@@ -182,7 +182,7 @@ struct TilePane: View {
                         tab.zoomedID = tab.zoomedID == session.id ? nil : session.id
                         DispatchQueue.main.async { session.focus() }
                     }
-                    PaneButton(symbol: "xmark", help: "Close this pane: ends its session") { model.close(session) }
+                    PaneButton(symbol: "xmark", help: "Close this pane: ends its session") { model.requestClose(session) }
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 26)

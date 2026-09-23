@@ -18,7 +18,7 @@ enum ControlServer {
             return
         }
         atexit { unlink(ControlSocket.path()) }
-        AgentWorldSkill.install()
+        if Preferences.shared.installsSkill { AgentWorldSkill.install() }
         let thread = Thread {
             while true {
                 let client = ControlSocket.accept(fd)

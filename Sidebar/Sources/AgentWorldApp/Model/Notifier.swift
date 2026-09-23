@@ -13,9 +13,6 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// Notifications need a bundle; a bare `swift run` binary only gets the badge and bounce.
     private let center: UNUserNotificationCenter? = Bundle.main.bundleIdentifier == nil ? nil : .current()
 
-    /// Short jobs don't deserve a ping: only after this much work.
-    static let minimumWork: TimeInterval = 8
-
     init(model: AppModel) {
         self.model = model
         super.init()
@@ -35,13 +32,13 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
             guard previous == .busy, tone == .needsYou || tone == .ended else { continue }
             let worked = busySince[session.id].map { now.timeIntervalSince($0) } ?? 0
-            guard worked >= Self.minimumWork, !isWatching(session) else { continue }
+            guard worked >= Preferences.shared.minimumWork, !isWatching(session) else { continue }
             announce(session, worked: worked)
         }
         let live = Set(sessions.map(\.id))
         lastTone = lastTone.filter { live.contains($0.key) }
         busySince = busySince.filter { live.contains($0.key) }
-        NSApp.dockTile.badgeLabel = waiting > 0 ? "\(waiting)" : nil
+        NSApp.dockTile.badgeLabel = waiting > 0 && Preferences.shared.dockBadge ? "\(waiting)" : nil
     }
 
     /// You're looking right at it: the app is frontmost and its pane is on screen.
@@ -52,24 +49,26 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     private func announce(_ session: TerminalSession, worked: TimeInterval) {
-        NSApp.requestUserAttention(.informationalRequest)
-        guard let center else { return }
+        let preferences = Preferences.shared
+        if preferences.bouncesDock { NSApp.requestUserAttention(.informationalRequest) }
+        guard preferences.notifies, let center else { return }
         let content = UNMutableNotificationContent()
         content.title = session.status.tone == .ended ? "\(session.label) ended" : "\(session.label) is waiting for you"
         content.body = "In \(session.folderName) · worked \(Self.duration(worked))"
-        content.sound = .default
+        content.sound = preferences.notificationSound ? .default : nil
         content.userInfo = ["session": session.id.uuidString]
         center.add(UNNotificationRequest(identifier: session.id.uuidString + "-\(Date().timeIntervalSince1970)", content: content, trigger: nil))
     }
 
     /// A message an agent sent with `agentworld-ctl notify`.
     func post(title: String, body: String, session: TerminalSession?) {
-        NSApp.requestUserAttention(.informationalRequest)
-        guard let center else { return }
+        let preferences = Preferences.shared
+        if preferences.bouncesDock { NSApp.requestUserAttention(.informationalRequest) }
+        guard preferences.notifies, let center else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
+        content.sound = preferences.notificationSound ? .default : nil
         if let session { content.userInfo = ["session": session.id.uuidString] }
         center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }

@@ -106,6 +106,9 @@ final class AppModel: ObservableObject {
             }
         }
         installKeyRouter()
+        Preferences.shared.onTerminalLookChange = { [weak self] in
+            self?.allSessions.forEach { $0.restyle() }
+        }
         timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect().sink { [weak self] date in
             self?.tick(date)
         }
@@ -127,6 +130,13 @@ final class AppModel: ObservableObject {
         ticks += 1
         if ticks % 20 == 0 { saveWorkspaces() }
         if ticks % 60 == 1 { refreshGit() }
+    }
+
+    /// Replaces the custom launch profiles and writes them to profiles.json.
+    func saveCustomProfiles(_ custom: [LaunchProfile]) {
+        profiles = LaunchProfile.defaults + custom
+        installed = [:]
+        try? LaunchProfile.save(profiles)
     }
 
     // MARK: - Lookups
