@@ -88,4 +88,4 @@ done
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$install_dir/AgentWorld.app"
 
 echo
-echo "Done. Open it from Spotlight or Launchpad (AgentWorld), or run: agentworld app"
+echo "Done. Open it from Spotlight or Launchpad (AgentWorld), or run: agentworld (in a project folder)"
