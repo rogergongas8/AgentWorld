@@ -241,3 +241,107 @@ struct LineCounts: View {
         .font(.mono(10.5, .semibold))
     }
 }
+
+/// Commit the workspace's changes: your message, or the pane's agent writes
+/// one in the repository's style.
+struct CommitSheet: View {
+    @EnvironmentObject private var model: AppModel
+    @Binding var isPresented: Bool
+    @State private var message = ""
+    @State private var push = UserDefaults.standard.bool(forKey: "commitPushes")
+    @State private var working = false
+    @State private var problem: String?
+    @State private var branch: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let folder = model.selectedFolder
+        let changes = model.changes[folder]
+        let agent = model.panelSession?.provider.isAgent == true ? model.panelSession : nil
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "smallcircle.filled.circle").foregroundStyle(Palette.warning)
+                Text("Commit \(changes?.files.count ?? 0) files").font(.mono(15, .bold)).foregroundStyle(Palette.cream)
+                if let branch {
+                    Text("to \(branch)").font(.mono(12)).foregroundStyle(Palette.muted)
+                }
+                Spacer()
+                if let changes {
+                    Text("+\(changes.added)").foregroundStyle(Palette.live).font(.mono(11, .semibold))
+                    Text("−\(changes.removed)").foregroundStyle(Palette.error).font(.mono(11, .semibold))
+                }
+            }
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $message)
+                    .font(.mono(12))
+                    .scrollContentBackground(.hidden)
+                    .focused($focused)
+                    .padding(6)
+                if message.isEmpty {
+                    Text("What changed and why. First line: a short summary.")
+                        .font(.mono(12)).foregroundStyle(Palette.faint).padding(.horizontal, 11).padding(.vertical, 6)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(height: 120)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Palette.background))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(focused ? Palette.claude.opacity(0.6) : Palette.border))
+            Toggle("Push after committing", isOn: $push)
+                .font(.mono(11.5))
+                .onChange(of: push) { UserDefaults.standard.set($0, forKey: "commitPushes") }
+            if let problem {
+                Text(problem).font(.mono(10.5)).foregroundStyle(Palette.error).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 10) {
+                if let agent {
+                    Button {
+                        isPresented = false
+                        agent.type("Commit the uncommitted changes: write a clear message in this repository's style (see git log) that says what changed and why, then commit" + (push ? " and push." : "."))
+                    } label: {
+                        Label("Let \(agent.provider.shortName) write it", systemImage: "wand.and.stars")
+                    }
+                    .help("Types the request into \(agent.label); press return there to send it")
+                }
+                Spacer()
+                if working { ProgressView().controlSize(.small) }
+                Button("Cancel") { isPresented = false }.keyboardShortcut(.cancelAction)
+                Button(push ? "Commit & Push" : "Commit") { commit(root: changes?.root ?? folder) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(working || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 560)
+        .background(Palette.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
+        .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
+        .onAppear {
+            focused = true
+            let root = changes?.root ?? folder
+            Task.detached { let name = GitChanges.branch(root: root); await MainActor.run { branch = name } }
+        }
+        .onExitCommand { isPresented = false }
+    }
+
+    private func commit(root: String) {
+        working = true
+        problem = nil
+        let text = message
+        let pushes = push
+        let folder = model.selectedFolder
+        Task.detached {
+            let failure = GitChanges.commit(root: root, message: text, push: pushes)
+            await MainActor.run {
+                working = false
+                if let failure {
+                    problem = failure
+                } else {
+                    isPresented = false
+                }
+                model.refreshChanges(folder)
+                model.refreshGit()
+            }
+        }
+    }
+}

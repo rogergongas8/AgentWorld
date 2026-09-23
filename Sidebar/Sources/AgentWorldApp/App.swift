@@ -59,6 +59,9 @@ struct AgentWorldApp: App {
                 Button("Next Workspace") { model.selectWorkspace(offset: 1) }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
                 Button("Previous Workspace") { model.selectWorkspace(offset: -1) }.keyboardShortcut(.upArrow, modifiers: [.command, .option])
                 Divider()
+                Button("Commit Changes…") { model.showsCommit = true }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .disabled(model.changes[model.selectedFolder]?.files.isEmpty != false)
                 Button("Search the Panel") { model.searchPanel() }
                     .keyboardShortcut("f")
                 Button("Browse the Panel") {

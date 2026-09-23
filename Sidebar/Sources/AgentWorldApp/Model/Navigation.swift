@@ -108,7 +108,7 @@ struct ShortcutsSheet: View {
                         ("⌃⌘S", "Show or hide the workspaces")]),
         ("Terminals", [("⌘T", "Open a CLI (launcher: arrows + ↩)"), ("⌘⇧[ / ⌘⇧]", "Previous / next tab"),
                        ("⌥⌘← / ⌥⌘→", "Previous / next pane"), ("⌘1…9", "Jump to a pane"), ("⌘D", "Add a pane beside"),
-                       ("⌘⇧Z", "Zoom the pane"), ("⌘W", "Close the tab")]),
+                       ("⌘⇧Z", "Zoom the pane"), ("⌘W", "Close the tab"), ("⌘⇧C", "Commit the changes")]),
         ("Right panel", [("⌘E", "Browse it with the keyboard"), ("↑↓ / j k", "Move"), ("← → / tab", "Crew · Skills · Tools · Tips"),
                          ("1-5", "Jump to a section"), ("/ or ⌘F", "Search"), ("↩", "Open the card"), ("u", "Use it in the terminal"),
                          ("e", "Change it (your CLI edits it)"), ("n", "New agent or skill"), ("esc", "Back to the terminal")]),

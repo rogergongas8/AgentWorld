@@ -39,12 +39,14 @@ struct TabStrip: View {
     @EnvironmentObject private var model: AppModel
     let tabs: [TerminalTab]
     @State private var dragging: UUID?
+    /// Full screen hides the traffic lights: no room to keep for them.
+    @State private var fullScreen = false
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
             if !model.showsSidebar {
                 // Room for the traffic lights, then the way back to the workspaces.
-                Spacer().frame(width: 74)
+                Spacer().frame(width: fullScreen ? 8 : 74)
                 SidebarToggle().frame(height: TabChip.height)
                 HStack(spacing: 6) {
                     Image(systemName: "folder.fill").foregroundStyle(Palette.claude)
@@ -105,6 +107,8 @@ struct TabStrip: View {
             dragging = nil
             return true
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in fullScreen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in fullScreen = false }
     }
 }
 

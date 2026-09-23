@@ -51,6 +51,38 @@ public enum GitChanges {
         return head.isEmpty ? (run(["diff", "--no-color", "--cached", "--", change.path], in: root) ?? "") : head
     }
 
+    /// Stages everything and commits it with `message`, then pushes when
+    /// asked. Returns git's complaint on failure, nil when it all worked.
+    public static func commit(root: String, message: String, push: Bool) -> String? {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Write a message first." }
+        if let failure = runReporting(["add", "-A"], in: root) { return failure }
+        if let failure = runReporting(["commit", "-q", "-m", message], in: root) { return failure }
+        if push, let failure = runReporting(["push", "-q"], in: root) { return "Committed, but the push failed: " + failure }
+        return nil
+    }
+
+    /// The current branch, for the commit sheet.
+    public static func branch(root: String) -> String? {
+        run(["rev-parse", "--abbrev-ref", "HEAD"], in: root)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Runs git and returns what it said when it fails ("nothing to commit"
+    /// comes on stdout, hook and push errors on stderr: both are kept).
+    private static func runReporting(_ arguments: [String], in folder: String) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", folder] + arguments
+        let errors = Pipe()
+        process.standardOutput = errors
+        process.standardError = errors
+        do { try process.run() } catch { return error.localizedDescription }
+        let data = errors.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus != 0 else { return nil }
+        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "git \(arguments.first ?? "") failed" : text
+    }
+
     /// `git status --porcelain=v1 -z` entries: "XY path\0" (renames add "\0old").
     static func parseStatus(_ output: String) -> [(String, FileChange.Kind)] {
         var result: [(String, FileChange.Kind)] = []

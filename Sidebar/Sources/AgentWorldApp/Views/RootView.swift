@@ -43,6 +43,13 @@ struct RootView: View {
             }
             .transition(.opacity)
         }
+        if model.showsCommit {
+            ZStack {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsCommit = false }
+                CommitSheet(isPresented: $model.showsCommit)
+            }
+            .transition(.opacity)
+        }
         if model.showsShortcuts {
             ZStack {
                 Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsShortcuts = false }

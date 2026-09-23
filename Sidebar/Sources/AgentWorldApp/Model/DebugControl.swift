@@ -32,6 +32,7 @@ enum DebugControl {
             switch parts.first {
             case "snapshot": snapshot(to: argument)
             case "panel": model.enterPanel()
+            case "commit": model.showsCommit = true
             case "render-usage":
                 // render-usage <png>: the usage popover, drawn offscreen.
                 if let usage = model.usage {

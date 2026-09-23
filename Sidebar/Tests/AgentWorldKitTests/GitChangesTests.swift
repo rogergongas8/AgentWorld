@@ -48,6 +48,18 @@ import Testing
         #expect(GitChanges.diff(try #require(byPath["src/new.swift"]), root: result.root).contains("+b"))
     }
 
+    @Test func commitsEverything() throws {
+        let repo = try repository()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try "a\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        #expect(GitChanges.commit(root: repo.path, message: "  ", push: false) != nil)
+        #expect(GitChanges.commit(root: repo.path, message: "Add a", push: false) == nil)
+        #expect(GitChanges.read(repo.path)?.changes.isEmpty == true)
+        #expect(GitChanges.run(["log", "-1", "--format=%s"], in: repo.path)?.trimmingCharacters(in: .newlines) == "Add a")
+        // Nothing left to commit: git says so.
+        #expect(GitChanges.commit(root: repo.path, message: "Again", push: false) != nil)
+    }
+
     @Test func notARepository() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("aw-plain-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

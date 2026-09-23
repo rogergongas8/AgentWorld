@@ -121,6 +121,9 @@ struct SectionBar: View {
             ChromeButton(symbol: "magnifyingglass", active: panel.searching, help: "Search agents, skills and tools (⌘F, or / in the panel)") {
                 if panel.searching { panel.stopSearching() } else { model.searchPanel() }
             }
+            if panel.section == .changes, model.changes[model.selectedFolder]?.files.isEmpty == false {
+                ChromeButton(symbol: "smallcircle.filled.circle", help: "Commit these changes (⌘⇧C)") { model.showsCommit = true }
+            }
             if panel.section == .changes, let session, model.changes[model.selectedFolder]?.files.isEmpty == false {
                 ChromeButton(symbol: "checkmark.seal", help: "Ask \(session.label) to review these changes") {
                     model.leavePanel()

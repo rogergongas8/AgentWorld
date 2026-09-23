@@ -78,6 +78,7 @@ final class AppModel: ObservableObject {
     @Published var usage: UsageSummary?
     let usageLedger = UsageLedger()
     var usageInFlight = false
+    @Published var showsCommit = false
     /// The change whose diff is open over the window.
     @Published var openChange: OpenChange?
     private var ticks = 0
