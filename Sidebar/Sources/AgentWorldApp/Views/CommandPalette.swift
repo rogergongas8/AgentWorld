@@ -423,6 +423,9 @@ struct PaletteItem: Identifiable {
                                  symbol: "shippingbox", color: Palette.mcp, keywords: "mcp plugins skills commands library", weight: 1) { $0.showsKit = true })
         items.append(PaletteItem(id: "act:sidebar", kind: "view", title: model.showsSidebar ? "Hide workspaces" : "Show workspaces",
                                  symbol: "sidebar.left", keywords: "sidebar left column folders", weight: 1) { $0.showsSidebar.toggle() })
+        items.append(PaletteItem(id: "act:map", kind: "view", title: "Project map", subtitle: "every file as a dot, linked to the ones it uses",
+                                 symbol: "point.3.connected.trianglepath.dotted", color: Palette.claude,
+                                 keywords: "graph dependencies imports files structure architecture", weight: 2) { $0.openProjectMap() })
         items.append(PaletteItem(id: "act:settings", kind: "app", title: "Settings…", subtitle: "font, notifications, CLIs, profiles",
                                  symbol: "gearshape", keywords: "preferences options config", weight: 1) { $0.openSettings() })
         if let changes = model.changes[model.selectedFolder], !changes.files.isEmpty {

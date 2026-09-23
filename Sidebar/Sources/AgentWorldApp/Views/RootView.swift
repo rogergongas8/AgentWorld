@@ -43,6 +43,17 @@ struct RootView: View {
             }
             .transition(.opacity)
         }
+        if model.showsMap {
+            ZStack {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsMap = false }
+                GeometryReader { geometry in
+                    ProjectMapView()
+                        .frame(width: geometry.size.width - 60, height: geometry.size.height - 70)
+                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2 + 10)
+                }
+            }
+            .transition(.opacity)
+        }
         if model.showsCommit {
             ZStack {
                 Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { model.showsCommit = false }

@@ -33,6 +33,8 @@ enum DebugControl {
             case "snapshot": snapshot(to: argument)
             case "panel": model.enterPanel()
             case "commit": model.showsCommit = true
+            case "map": model.openProjectMap()
+            case "map-select": model.mapFocus = argument
             case "palette":
                 model.paletteSeed = argument
                 model.showsPalette = false

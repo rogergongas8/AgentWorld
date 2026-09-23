@@ -83,6 +83,12 @@ final class AppModel: ObservableObject {
     let usageLedger = UsageLedger()
     var usageInFlight = false
     @Published var showsCommit = false
+    /// The project map over the window, and the last one built.
+    @Published var showsMap = false
+    @Published var projectMap: ProjectMap?
+    /// A file to select once the map is up ("Show on the map").
+    @Published var mapFocus: String?
+    var mapBuilding = false
     /// Each workspace's files, for ⌘K and the project map.
     @Published var projectFiles: [String: (files: [String], at: Date)] = [:]
     /// The change whose diff is open over the window.

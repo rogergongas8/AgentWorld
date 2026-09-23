@@ -113,7 +113,7 @@ struct ShortcutsSheet: View {
                          ("1-5", "Jump to a section"), ("/ or ⌘F", "Search"), ("↩", "Open the card"), ("u", "Use it in the terminal"),
                          ("e", "Change it (your CLI edits it)"), ("n", "New agent or skill"), ("esc", "Back to the terminal")]),
         ("Everything", [("⌘K", "Command palette"), ("⌘⇧K", "Kit: every CLI's skills, MCP, plugins"),
-                        ("⌥⌘I", "Show or hide the panel"), ("⌘,", "Settings"), ("⌘/", "This sheet")]),
+                        ("⌥⌘I", "Show or hide the panel"), ("⌘⇧M", "Project map"), ("⌘,", "Settings"), ("⌘/", "This sheet")]),
     ]
 
     var body: some View {

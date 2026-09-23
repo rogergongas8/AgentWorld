@@ -83,6 +83,9 @@ struct TabStrip: View {
                     AddPaneMenu(tab: tab)
                     Rectangle().fill(Palette.border).frame(width: 1, height: 16).padding(.horizontal, 4)
                 }
+                ChromeButton(symbol: "point.3.connected.trianglepath.dotted", active: model.showsMap, help: "Map of the project: files and how they connect (⌘⇧M)") {
+                    if model.showsMap { model.showsMap = false } else { model.openProjectMap() }
+                }
                 UsageButton()
                 RunningSummary().padding(.trailing, 6)
                 ChromeButton(symbol: "sidebar.right", active: model.showsInspector, help: "Show or hide agents, skills and tips (⌥⌘I)") {
