@@ -4,10 +4,21 @@ import AppKit
 import Foundation
 import TerminalUI
 
-/// Draws the app icon from the same pixel art: Claude on a dark, rounded
-/// tile with a strip of ground and two crew members peeking in. Used by
+/// Draws the app icon from the same pixel art: a terminal window with three
+/// crew members inside, for any CLI (no brand's character). Used by
 /// `scripts/build-app.sh` through `AgentWorldApp --render-icon <dir.iconset>`.
 enum AppIcon {
+    /// Candidate crew for the icon, side by side (`--render-crew <png>`), to pick contrasting colors.
+    static func renderCandidates(_ names: [String], to path: String) {
+        var p = PixelCanvas(width: names.count * 12 + 2, height: 16)
+        for (index, name) in names.enumerated() {
+            _ = CharacterPainter.drawCrew(on: &p, look: CharacterLook(name: name), x: 1 + index * 12, ground: 15, pose: Pose())
+        }
+        if let image = p.cgImage(factor: 12) {
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
     static func renderIconset(to directory: String) {
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
         let art = canvas()
@@ -32,24 +43,50 @@ enum AppIcon {
         }
     }
 
+    /// Any CLI, not one: a terminal window with its prompt, and three
+    /// crew members of no particular brand standing inside it. A margin
+    /// around the window, like every macOS icon.
     static func canvas() -> PixelCanvas {
-        let size = 32
+        let size = 48, o = 4, w = 40
         var p = PixelCanvas(width: size, height: size)
-        let tile = RGB(hex: 0x13171C)
-        // Rounded tile: fill, then clip the corners.
-        p.rect(x: 1, y: 1, width: size - 2, height: size - 2, tile)
-        for (x, y) in [(1, 1), (2, 1), (1, 2), (size - 2, 1), (size - 3, 1), (size - 2, 2),
-                       (1, size - 2), (2, size - 2), (1, size - 3), (size - 2, size - 2), (size - 3, size - 2), (size - 2, size - 3)] {
-            p[x, y] = nil
+        let tile = RGB(hex: 0x0D1014)
+        let bar = RGB(hex: 0x222831)
+        p.rect(x: o, y: o, width: w, height: w, tile)
+        // Title bar with the three buttons.
+        p.rect(x: o, y: o, width: w, height: 6, bar)
+        for (index, color) in [0xFF5F57, 0xFEBC2E, 0x28C840].enumerated() {
+            p.rect(x: o + 3 + index * 4, y: o + 2, width: 2, height: 2, RGB(hex: UInt32(color)))
         }
-        // Stars.
-        for (x, y) in [(6, 5), (24, 4), (27, 9), (10, 8)] { p[x, y] = Theme.muted }
-        // Ground.
-        p.rect(x: 2, y: 25, width: size - 4, height: 1, RGB(hex: 0x3FA34D))
-        p.rect(x: 2, y: 26, width: size - 4, height: 4, RGB(hex: 0x6B4F3A))
-        p.rect(x: 3, y: 30, width: size - 6, height: 1, RGB(hex: 0x6B4F3A))
-        // Claude in the middle, waving.
-        CharacterPainter.drawClaude(on: &p, x: 8, ground: 25, pose: Animator.waving(t: 0))
+        // The prompt: "›" and a cursor.
+        let prompt = RGB(hex: 0x56D364)
+        for (x, y) in [(0, 0), (1, 1), (2, 2), (1, 3), (0, 4)] { p[o + 3 + x, o + 9 + y] = prompt }
+        p.rect(x: o + 8, y: o + 13, width: 5, height: 1, Theme.cream)
+        // Three of the crew, each its own color, on a line of ground.
+        let ground = o + w - 4
+        p.rect(x: o, y: ground, width: w, height: 1, RGB(hex: 0x3FA34D))
+        p.rect(x: o, y: ground + 1, width: w, height: 3, RGB(hex: 0x6B4F3A))
+        let crew = ["tester", "scout", "runner"].map(CharacterLook.init(name:))
+        let poses = [Pose(), Pose(leftArm: .up, rightArm: .up, eyes: .happy), Animator.waving(t: 0.2)]
+        for (index, look) in crew.enumerated() {
+            _ = CharacterPainter.drawCrew(on: &p, look: look, x: o + 3 + index * 12, ground: ground, pose: poses[index])
+        }
+        roundCorners(&p, x: o, y: o, size: w)
         return p
+    }
+
+    /// Clips a 3-pixel rounding off each corner of the square at (x, y).
+    private static func roundCorners(_ p: inout PixelCanvas, x: Int, y: Int, size: Int) {
+        let cut = [(0, 0), (1, 0), (2, 0), (0, 1), (0, 2)]
+        for (dx, dy) in cut {
+            p[x + dx, y + dy] = nil
+            p[x + size - 1 - dx, y + dy] = nil
+            p[x + dx, y + size - 1 - dy] = nil
+            p[x + size - 1 - dx, y + size - 1 - dy] = nil
+        }
+        // A softer edge: the pixel just inside each corner.
+        p[x + 1, y + 1] = nil
+        p[x + size - 2, y + 1] = nil
+        p[x + 1, y + size - 2] = nil
+        p[x + size - 2, y + size - 2] = nil
     }
 }

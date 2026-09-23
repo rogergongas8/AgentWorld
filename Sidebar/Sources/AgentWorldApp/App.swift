@@ -6,6 +6,10 @@ struct AgentWorldApp: App {
     @StateObject private var model: AppModel
 
     init() {
+        if let index = CommandLine.arguments.firstIndex(of: "--render-crew"), CommandLine.arguments.indices.contains(index + 2) {
+            AppIcon.renderCandidates(Array(CommandLine.arguments[(index + 2)...]), to: CommandLine.arguments[index + 1])
+            exit(0)
+        }
         if let index = CommandLine.arguments.firstIndex(of: "--render-icon"), CommandLine.arguments.indices.contains(index + 1) {
             AppIcon.renderIconset(to: CommandLine.arguments[index + 1])
             exit(0)
