@@ -25,6 +25,11 @@ struct InspectorView: View {
                        session: agentSession, provider: provider)
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
+            if panel.searching || !panel.query.isEmpty {
+                PanelSearchField(panel: panel)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+            }
             Rectangle().fill(Palette.border).frame(height: 1).padding(.top, 8)
             ScrollViewReader { proxy in
                 ScrollView {
@@ -49,7 +54,12 @@ struct InspectorView: View {
     @ViewBuilder
     private func rows(_ items: [PanelItem], config: AgentConfiguration, session: TerminalSession?, provider: Provider) -> some View {
         if items.isEmpty {
-            EmptySection(section: panel.section, provider: provider)
+            if panel.query.isEmpty {
+                EmptySection(section: panel.section, provider: provider)
+            } else {
+                Text("Nothing here matches \"\(panel.query)\".")
+                    .font(.mono(11)).foregroundStyle(Palette.faint).padding(12)
+            }
         }
         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
             if panel.section == .skills, case .skill(let skill) = item, isFirstOfCategory(skill, at: index, in: items) {
@@ -104,6 +114,9 @@ struct SectionBar: View {
                 .help("\(section.title) (\(section.rawValue + 1) while the panel has the keys)")
             }
             Spacer(minLength: 0)
+            ChromeButton(symbol: "magnifyingglass", active: panel.searching, help: "Search agents, skills and tools (⌘F, or / in the panel)") {
+                if panel.searching { panel.stopSearching() } else { model.searchPanel() }
+            }
             if panel.section == .crew || panel.section == .skills {
                 NewKitItemButton(kind: panel.section == .crew ? "agent" : "skill", session: session, provider: provider,
                                  config: config, isPresented: $panel.creating)
@@ -112,11 +125,60 @@ struct SectionBar: View {
     }
 
     private func count(_ section: PanelNavigator.Section) -> Int? {
+        if !panel.query.isEmpty { return model.panelItems(section).count }
         switch section {
-        case .crew: config.agents.count
-        case .skills: config.skills.count
-        case .tools: config.mcpServers.count + config.plugins.count + config.commands.count
-        case .tips: nil
+        case .crew: return config.agents.count
+        case .skills: return config.skills.count
+        case .tools: return config.mcpServers.count + config.plugins.count + config.commands.count
+        case .tips: return nil
+        }
+    }
+}
+
+/// The panel's search, typed through the key router so the arrows and ↩
+/// keep moving through the results.
+struct PanelSearchField: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var panel: PanelNavigator
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Palette.muted)
+            HStack(spacing: 1) {
+                if panel.query.isEmpty, panel.searching {
+                    Caret()
+                    Text("type to filter").foregroundStyle(Palette.faint)
+                } else {
+                    Text(panel.query).foregroundStyle(Palette.cream)
+                    if panel.searching { Caret() }
+                }
+            }
+            .font(.mono(11.5))
+            .lineLimit(1)
+            Spacer(minLength: 4)
+            Button { panel.stopSearching() } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.faint)
+            }
+            .buttonStyle(.plain)
+            .help("Clear the search (esc)")
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 28)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Palette.background))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(panel.searching ? Palette.claude.opacity(0.6) : Palette.border))
+        .contentShape(Rectangle())
+        .onTapGesture { model.searchPanel() }
+    }
+}
+
+/// A blinking text cursor.
+struct Caret: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            Rectangle()
+                .fill(Palette.claude)
+                .frame(width: 1.5, height: 13)
+                .opacity(Int(context.date.timeIntervalSinceReferenceDate * 2) % 2 == 0 ? 1 : 0)
         }
     }
 }
@@ -326,8 +388,14 @@ struct KeyHintBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if panel.isFocused {
+            if panel.isFocused, panel.searching {
+                hint("type", "filter")
                 hint("↑↓", "move")
+                hint("↩", "open")
+                hint("esc", "clear")
+            } else if panel.isFocused {
+                hint("↑↓", "move")
+                hint("/", "search")
                 hint("↩", "open")
                 hint("u", "use")
                 hint("e", "edit")

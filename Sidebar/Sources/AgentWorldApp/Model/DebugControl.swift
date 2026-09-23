@@ -31,6 +31,10 @@ enum DebugControl {
             let argument = parts.count > 1 ? parts[1] : ""
             switch parts.first {
             case "snapshot": snapshot(to: argument)
+            case "panel": model.enterPanel()
+            case "keys":
+                // keys <text>: typed through the key router; {esc} {bs} {down} {up} {ret} {tab} for the rest.
+                keys(argument, model: model)
             case "settings":
                 // settings [tab]: general, terminal, clis, notifications, integrations, shortcuts
                 if !argument.isEmpty { UserDefaults.standard.set(argument, forKey: "settingsTab") }
@@ -128,6 +132,28 @@ enum DebugControl {
         renderer.scale = 2
         guard let image = renderer.cgImage else { return }
         try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    private static func keys(_ text: String, model: AppModel) {
+        let named: [String: (UInt16, String)] = ["esc": (53, "\u{1b}"), "bs": (51, "\u{7f}"), "down": (125, "\u{F701}"),
+                                                 "up": (126, "\u{F700}"), "ret": (36, "\r"), "tab": (48, "\t")]
+        var tokens: [(UInt16, String)] = []
+        var rest = Substring(text)
+        while let first = rest.first {
+            if first == "{", let close = rest.firstIndex(of: "}"), let key = named[String(rest[rest.index(after: rest.startIndex)..<close])] {
+                tokens.append(key)
+                rest = rest[rest.index(after: close)...]
+            } else {
+                tokens.append((first == " " ? 49 : 0, String(first)))
+                rest = rest.dropFirst()
+            }
+        }
+        for (code, characters) in tokens {
+            guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                               context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                                               isARepeat: false, keyCode: code) else { continue }
+            _ = model.route(event)
+        }
     }
 
     private static func snapshot(to path: String) {

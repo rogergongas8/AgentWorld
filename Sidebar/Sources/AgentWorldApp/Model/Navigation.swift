@@ -110,7 +110,7 @@ struct ShortcutsSheet: View {
                        ("⌥⌘← / ⌥⌘→", "Previous / next pane"), ("⌘1…9", "Jump to a pane"), ("⌘D", "Add a pane beside"),
                        ("⌘⇧Z", "Zoom the pane"), ("⌘W", "Close the tab")]),
         ("Right panel", [("⌘E", "Browse it with the keyboard"), ("↑↓ / j k", "Move"), ("← → / tab", "Crew · Skills · Tools · Tips"),
-                         ("1-4", "Jump to a section"), ("↩", "Open the card"), ("u", "Use it in the terminal"),
+                         ("1-4", "Jump to a section"), ("/ or ⌘F", "Search"), ("↩", "Open the card"), ("u", "Use it in the terminal"),
                          ("e", "Change it (your CLI edits it)"), ("n", "New agent or skill"), ("esc", "Back to the terminal")]),
         ("Everything", [("⌘K", "Command palette"), ("⌘⇧K", "Kit: every CLI's skills, MCP, plugins"),
                         ("⌥⌘I", "Show or hide the panel"), ("⌘,", "Settings"), ("⌘/", "This sheet")]),

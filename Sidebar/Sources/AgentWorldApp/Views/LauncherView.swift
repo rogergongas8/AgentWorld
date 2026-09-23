@@ -118,9 +118,7 @@ struct LauncherView: View {
 
     /// Installed first; the rest after, in the usual order.
     private var sortedProfiles: [LaunchProfile] {
-        let hidden = Preferences.shared.hiddenProviders
-        let all = model.profiles.filter { $0.isCustom || !hidden.contains($0.provider.id) }
-        return all.filter { model.executable(for: $0) != nil } + all.filter { model.executable(for: $0) == nil }
+        model.launcherProfiles
     }
 
     private func activate(_ profile: LaunchProfile) {

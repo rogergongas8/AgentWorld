@@ -22,6 +22,23 @@ enum PanelItem: Identifiable {
         }
     }
 
+    /// For the panel's search: the query in its name or what it says it does.
+    func matches(_ query: String) -> Bool {
+        let words = query.lowercased().split(separator: " ")
+        guard !words.isEmpty else { return true }
+        let haystack: String
+        switch self {
+        case .agent(let agent): haystack = [agent.qualifiedName, agent.description ?? "", agent.skills.joined(separator: " ")].joined(separator: " ")
+        case .skill(let skill): haystack = [skill.qualifiedName, skill.summary ?? "", skill.category.title].joined(separator: " ")
+        case .server(let server): haystack = [server.name, server.transport, server.plugin ?? ""].joined(separator: " ")
+        case .plugin(let plugin): haystack = [plugin.name, plugin.description ?? ""].joined(separator: " ")
+        case .command(let command): haystack = [command.qualifiedName, command.description ?? ""].joined(separator: " ")
+        case .tip(let tip): haystack = tip.name + " " + tip.reasons.joined(separator: " ")
+        }
+        let text = haystack.lowercased()
+        return words.allSatisfy { text.contains($0) }
+    }
+
     /// The skill or agent behind it, for the detail card.
     var kitItem: KitItem? {
         switch self {
@@ -71,6 +88,16 @@ final class PanelNavigator: ObservableObject {
     @Published var editing = false
     /// The "+ New" card for the section, opened from the keyboard.
     @Published var creating = false
+    /// `/`: typing filters the rows (names, descriptions) instead of running keys.
+    @Published var searching = false
+    @Published var query = "" {
+        didSet { if query != oldValue { selection = 0; openDetail = nil } }
+    }
+
+    func stopSearching() {
+        searching = false
+        query = ""
+    }
 
     func move(_ delta: Int, count: Int) {
         guard count > 0 else { return }
@@ -97,7 +124,13 @@ extension AppModel {
         panelSession?.provider.isAgent == true ? panelSession!.provider : .claude
     }
 
+    /// A section's rows, narrowed by the panel's search.
     func panelItems(_ section: PanelNavigator.Section) -> [PanelItem] {
+        let all = allPanelItems(section)
+        return panel.query.isEmpty ? all : all.filter { $0.matches(panel.query) }
+    }
+
+    private func allPanelItems(_ section: PanelNavigator.Section) -> [PanelItem] {
         let config = config(panelProvider, in: selectedFolder)
         switch section {
         case .crew:
@@ -152,15 +185,29 @@ extension AppModel {
         case 36, 76:                                                 // return
             let list = items()
             if list.indices.contains(panel.selection) { activate(list[panel.selection], detail: true) }
+        case 51 where panel.searching:                               // delete
+            if panel.query.isEmpty { panel.searching = false } else { panel.query.removeLast() }
         case 53:                                                     // esc
-            if panel.openDetail != nil || panel.creating {
+            if panel.searching || !panel.query.isEmpty {
+                panel.stopSearching()
+            } else if panel.openDetail != nil || panel.creating {
                 panel.openDetail = nil
                 panel.creating = false
             } else {
                 leavePanel()
             }
         default:
+            if panel.searching {
+                // Letters, digits, spaces and the like go into the query.
+                guard let typed = event.characters, typed.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+                      !typed.isEmpty else { return false }
+                panel.query += typed
+                jumpToSectionWithResults()
+                return true
+            }
             switch event.charactersIgnoringModifiers {
+            case "/":
+                panel.searching = true
             case "1", "2", "3", "4":
                 if let digit = Int(event.charactersIgnoringModifiers ?? ""), let section = PanelNavigator.Section(rawValue: digit - 1) {
                     panel.section = section
@@ -183,6 +230,19 @@ extension AppModel {
             }
         }
         return true
+    }
+
+    /// Searching from a section with nothing that matches: go where there is.
+    private func jumpToSectionWithResults() {
+        guard panelItems(panel.section).isEmpty,
+              let better = PanelNavigator.Section.allCases.first(where: { !panelItems($0).isEmpty }) else { return }
+        panel.section = better
+    }
+
+    /// Opens the panel with the search going, from ⌘F or its magnifier.
+    func searchPanel() {
+        enterPanel()
+        panel.searching = true
     }
 
     /// Return on a row: its card (skills, agents) or, for tips, use it.
@@ -228,6 +288,7 @@ extension AppModel {
 
     func leavePanel() {
         panel.isFocused = false
+        panel.searching = false
         panel.openDetail = nil
         panel.creating = false
         if let session = panelSession { DispatchQueue.main.async { session.focus() } }
@@ -249,8 +310,11 @@ extension AppModel {
         return true
     }
 
-    /// The launcher's cards in order: installed first.
+    /// The launcher's cards in order: installed first, without the CLIs
+    /// Settings hides (your profiles always show).
     var launcherProfiles: [LaunchProfile] {
-        profiles.filter { executable(for: $0) != nil } + profiles.filter { executable(for: $0) == nil }
+        let hidden = Preferences.shared.hiddenProviders
+        let shown = profiles.filter { $0.isCustom || !hidden.contains($0.provider.id) }
+        return shown.filter { executable(for: $0) != nil } + shown.filter { executable(for: $0) == nil }
     }
 }

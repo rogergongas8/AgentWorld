@@ -59,6 +59,8 @@ struct AgentWorldApp: App {
                 Button("Next Workspace") { model.selectWorkspace(offset: 1) }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
                 Button("Previous Workspace") { model.selectWorkspace(offset: -1) }.keyboardShortcut(.upArrow, modifiers: [.command, .option])
                 Divider()
+                Button("Search the Panel") { model.searchPanel() }
+                    .keyboardShortcut("f")
                 Button("Browse the Panel") {
                     if model.panel.isFocused { model.leavePanel() } else { model.enterPanel() }
                 }
