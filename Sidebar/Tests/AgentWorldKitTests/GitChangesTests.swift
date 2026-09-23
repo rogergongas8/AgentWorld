@@ -67,3 +67,16 @@ import Testing
         #expect(GitChanges.read(folder.path) == nil)
     }
 }
+
+@Suite struct ProjectFilesTests {
+    @Test func walksWithoutBuildFolders() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("aw-files-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        for path in ["src/a.swift", "src/b/c.ts", "node_modules/x/index.js", ".build/debug/y", "README.md"] {
+            let url = root.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "x".write(to: url, atomically: true, encoding: .utf8)
+        }
+        #expect(ProjectFiles.list(root.path) == ["README.md", "src/a.swift", "src/b/c.ts"])
+    }
+}

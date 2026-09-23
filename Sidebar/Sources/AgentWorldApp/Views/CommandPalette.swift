@@ -10,77 +10,176 @@ struct CommandPalette: View {
     @EnvironmentObject private var model: AppModel
     @Binding var isPresented: Bool
     @State private var query = ""
+    @State private var scope = PaletteScope.all
     @State private var selection = 0
     @FocusState private var focused: Bool
 
+    /// Rows as shown: in All with nothing typed, grouped under headers.
+    private struct Row: Identifiable {
+        let id: String
+        let header: String?
+        let item: PaletteItem
+    }
+
     var body: some View {
-        let items = PaletteItem.all(model: model).ranked(by: query)
+        let (effectiveScope, text) = PaletteScope.parse(query, default: scope)
+        let all = PaletteItem.all(model: model, includeFiles: effectiveScope == .files || !text.isEmpty)
+        let ranked = all.filter { effectiveScope == .all || $0.scope == effectiveScope }.ranked(by: text)
+        let rows = rows(ranked, scope: effectiveScope, grouped: text.isEmpty)
+        let counts = Dictionary(grouping: all.ranked(by: text), by: \.scope).mapValues(\.count)
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").foregroundStyle(Palette.muted)
-                TextField("Jump to a terminal, launch a CLI, use a skill…", text: $query)
+                Image(systemName: effectiveScope.symbol).foregroundStyle(Palette.muted).frame(width: 16)
+                TextField(effectiveScope.placeholder, text: $query)
                     .textFieldStyle(.plain)
                     .font(.mono(14))
                     .foregroundStyle(Palette.cream)
                     .focused($focused)
-                    .onSubmit { run(items) }
+                    .onSubmit { run(rows) }
                     .onChange(of: query) { _ in selection = 0 }
                 Text("esc").font(.mono(10)).foregroundStyle(Palette.faint)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Palette.border))
             }
             .padding(14)
+            scopeBar(active: effectiveScope, counts: counts, total: all.ranked(by: text).count)
             Rectangle().fill(Palette.border).frame(height: 1)
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(items.prefix(60).enumerated()), id: \.element.id) { index, item in
-                            PaletteRow(item: item, selected: index == selection)
-                                .id(index)
+                    // Plain VStack: at most 80 rows, and a lazy one kept stale rows
+                    // when the section changed under it.
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            if let header = row.header {
+                                HStack {
+                                    Text(header.uppercased()).font(.mono(9.5, .semibold)).foregroundStyle(Palette.muted)
+                                    Spacer()
+                                    if let more = moreCount(header, counts: counts) {
+                                        Text("\(more) more · tab").font(.mono(9.5)).foregroundStyle(Palette.faint)
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.top, index == 0 ? 4 : 12)
+                                .padding(.bottom, 3)
+                            }
+                            PaletteRow(item: row.item, selected: index == selection)
                                 .onTapGesture {
                                     selection = index
-                                    run(items)
+                                    run(rows)
                                 }
                         }
-                        if items.isEmpty {
-                            Text("Nothing matches “\(query)”.").font(.mono(12)).foregroundStyle(Palette.faint).padding(16)
+                        if rows.isEmpty {
+                            Text(emptyText(effectiveScope, text: text)).font(.mono(12)).foregroundStyle(Palette.faint).padding(16)
                         }
                     }
                     .padding(6)
                 }
-                .onChange(of: selection) { value in proxy.scrollTo(value) }
+                .onChange(of: selection) { value in
+                    if rows.indices.contains(value) { proxy.scrollTo(rows[value].id) }
+                }
             }
-            .frame(maxHeight: 380)
+            .frame(maxHeight: 420)
             Rectangle().fill(Palette.border).frame(height: 1)
             HStack(spacing: 14) {
                 hint("↑↓", "move")
                 hint("⏎", "do it")
-                hint("esc", "close")
+                hint("tab", "section")
+                hint(">", "actions")
+                hint("@", "files")
+                hint("#", "terminals")
                 Spacer()
-                Text(model.focusedSession.map { "skills go to \($0.label)" } ?? "click a terminal first to send skills to it")
-                    .font(.mono(10)).foregroundStyle(Palette.faint)
+                Text(model.paletteTarget.map { "→ \($0.label)" } ?? "no terminal picked")
+                    .font(.mono(10)).foregroundStyle(Palette.faint).lineLimit(1)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
         }
-        .frame(width: 640)
+        .frame(width: 680)
         .background(RoundedRectangle(cornerRadius: 12).fill(Palette.panel))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
         .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
         .onAppear {
             focused = true
-            model.paletteTarget = model.focusedSession
+            model.paletteTarget = model.focusedSession ?? model.panelSession
+            model.loadProjectFiles(model.selectedFolder)
+            if let seed = model.paletteSeed {
+                query = seed
+                model.paletteSeed = nil
+            }
         }
         .onExitCommand { isPresented = false }
         .background(
-            // Arrow keys while the text field has focus.
+            // Arrows and tab while the text field has focus.
             KeyCatcher { key in
                 switch key {
                 case .up: selection = max(0, selection - 1)
-                case .down: selection = min(max(0, min(items.count, 60) - 1), selection + 1)
+                case .down: selection = min(max(0, rows.count - 1), selection + 1)
+                case .tab, .backTab:
+                    // A typed prefix picks the section; tab moves on from it.
+                    let (current, rest) = PaletteScope.parse(query, default: scope)
+                    if current != scope { query = rest }
+                    scope = current.next(key == .tab ? 1 : -1)
+                    selection = 0
                 }
             }
         )
+    }
+
+    private func scopeBar(active: PaletteScope, counts: [PaletteScope: Int], total: Int) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(PaletteScope.allCases) { item in
+                    let selected = item == active
+                    let count = item == .all ? total : counts[item] ?? 0
+                    Button {
+                        scope = item
+                        if PaletteScope.parse(query, default: scope).0 != scope { query = PaletteScope.parse(query, default: scope).1 }
+                        selection = 0
+                        focused = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: item.symbol).font(.system(size: 10))
+                            Text(item.title)
+                            if count > 0, item != .all { Text("\(count)").font(.mono(9.5)).foregroundStyle(Palette.faint) }
+                        }
+                        .font(.mono(11, selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Palette.cream : count == 0 && item != .all ? Palette.faint : Palette.muted)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selected : .clear))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func rows(_ items: [PaletteItem], scope: PaletteScope, grouped: Bool) -> [Row] {
+        guard scope == .all, grouped else {
+            return items.prefix(80).map { Row(id: $0.id, header: nil, item: $0) }
+        }
+        var rows: [Row] = []
+        for section in PaletteScope.allCases where section != .all {
+            let inSection = items.filter { $0.scope == section }.prefix(section.shownInAll)
+            for (index, item) in inSection.enumerated() {
+                rows.append(Row(id: item.id, header: index == 0 ? section.title : nil, item: item))
+            }
+        }
+        return rows
+    }
+
+    private func moreCount(_ header: String, counts: [PaletteScope: Int]) -> Int? {
+        guard let section = PaletteScope.allCases.first(where: { $0.title == header }) else { return nil }
+        let more = (counts[section] ?? 0) - section.shownInAll
+        return more > 0 ? more : nil
+    }
+
+    private func emptyText(_ scope: PaletteScope, text: String) -> String {
+        if scope == .files, model.files(in: model.selectedFolder).isEmpty { return "Reading the project's files…" }
+        return text.isEmpty ? "Nothing here yet." : "Nothing in \(scope.title) matches “\(text)”."
     }
 
     private func hint(_ key: String, _ label: String) -> some View {
@@ -90,11 +189,93 @@ struct CommandPalette: View {
         }
     }
 
-    private func run(_ items: [PaletteItem]) {
-        guard items.indices.contains(selection) else { return }
+    private func run(_ rows: [Row]) {
+        guard rows.indices.contains(selection) else { return }
         isPresented = false
-        let action = items[selection].action
+        let action = rows[selection].item.action
         DispatchQueue.main.async { action(model) }
+    }
+}
+
+/// The palette's sections, each with a tab and (some) a prefix you can type.
+enum PaletteScope: String, CaseIterable, Identifiable, Hashable {
+    case all, terminals, launch, workspaces, agents, skills, files, git, actions
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .terminals: "Terminals"
+        case .launch: "Launch"
+        case .workspaces: "Workspaces"
+        case .agents: "Agents"
+        case .skills: "Skills"
+        case .files: "Files"
+        case .git: "Git"
+        case .actions: "Actions"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .all: "magnifyingglass"
+        case .terminals: "terminal"
+        case .launch: "play.fill"
+        case .workspaces: "folder"
+        case .agents: "person.2"
+        case .skills: "book.closed"
+        case .files: "doc.text"
+        case .git: "plusminus"
+        case .actions: "command"
+        }
+    }
+
+    var placeholder: String {
+        switch self {
+        case .all: "Jump to a terminal, launch a CLI, find a file…"
+        case .terminals: "Jump to a terminal…"
+        case .launch: "Open a CLI or a saved crew…"
+        case .workspaces: "Switch workspace…"
+        case .agents: "Chat with an agent…"
+        case .skills: "Use a skill or slash command…"
+        case .files: "Find a file to mention in the terminal…"
+        case .git: "Changes and diffs…"
+        case .actions: "Run an action…"
+        }
+    }
+
+    /// Typed first to jump straight to a section, like VS Code's > and @.
+    var prefix: Character? {
+        switch self {
+        case .actions: ">"
+        case .files: "@"
+        case .terminals: "#"
+        case .skills: "/"
+        default: nil
+        }
+    }
+
+    /// Rows per section in the grouped All view.
+    var shownInAll: Int {
+        switch self {
+        case .terminals: 6
+        case .files: 0
+        default: 4
+        }
+    }
+
+    func next(_ delta: Int) -> PaletteScope {
+        let all = Self.allCases
+        let index = all.firstIndex(of: self) ?? 0
+        return all[(index + delta + all.count) % all.count]
+    }
+
+    /// The section a query asks for (by its prefix) and the text after it.
+    static func parse(_ query: String, default scope: PaletteScope) -> (PaletteScope, String) {
+        guard let first = query.first, let match = allCases.first(where: { $0.prefix == first }) else { return (scope, query) }
+        // "/" alone is a skill search; "/foo" too.
+        return (match, String(query.dropFirst()).trimmingCharacters(in: .whitespaces))
     }
 }
 
@@ -144,8 +325,21 @@ struct PaletteItem: Identifiable {
     var weight = 0
     let action: @MainActor (AppModel) -> Void
 
+    var scope: PaletteScope {
+        switch kind {
+        case "terminal": .terminals
+        case "launch", "split", "crew": .launch
+        case "workspace": .workspaces
+        case "agent": .agents
+        case "skill", "command": .skills
+        case "file": .files
+        case "git", "diff": .git
+        default: .actions
+        }
+    }
+
     @MainActor
-    static func all(model: AppModel) -> [PaletteItem] {
+    static func all(model: AppModel, includeFiles: Bool = false) -> [PaletteItem] {
         var items: [PaletteItem] = []
         let folder = model.selectedFolder
         let folderName = URL(fileURLWithPath: folder).lastPathComponent
@@ -247,6 +441,23 @@ struct PaletteItem: Identifiable {
                 })
             }
         }
+        if includeFiles {
+            let folder = model.selectedFolder
+            for path in model.files(in: folder) {
+                let name = (path as NSString).lastPathComponent
+                let directory = (path as NSString).deletingLastPathComponent
+                items.append(PaletteItem(id: "file:" + path, kind: "file", title: name, subtitle: directory.isEmpty ? nil : directory,
+                                         symbol: "doc.text", color: Palette.text, keywords: path.lowercased(), weight: 0) { model in
+                    let full = URL(fileURLWithPath: folder).appendingPathComponent(path).path
+                    if let target = model.paletteTarget {
+                        model.reveal(target)
+                        model.mention(full, in: target)
+                    } else {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: full))
+                    }
+                })
+            }
+        }
         if let tab = model.selectedTab, tab.sessions.count > 1 {
             for layout in TileLayout.allCases {
                 items.append(PaletteItem(id: "layout:\(layout.rawValue)", kind: "layout", title: "Layout: \(layout.title)",
@@ -294,7 +505,7 @@ extension Array where Element == PaletteItem {
 
 /// Up and down arrows, even while a text field holds the keyboard.
 struct KeyCatcher: NSViewRepresentable {
-    enum Key { case up, down }
+    enum Key { case up, down, tab, backTab }
     let onKey: (Key) -> Void
 
     func makeNSView(context: Context) -> NSView {
@@ -303,6 +514,7 @@ struct KeyCatcher: NSViewRepresentable {
             switch event.keyCode {
             case 126: context.coordinator.onKey(.up); return nil
             case 125: context.coordinator.onKey(.down); return nil
+            case 48: context.coordinator.onKey(event.modifierFlags.contains(.shift) ? .backTab : .tab); return nil
             default: return event
             }
         }

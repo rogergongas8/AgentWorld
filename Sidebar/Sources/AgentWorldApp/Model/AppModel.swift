@@ -64,6 +64,8 @@ final class AppModel: ObservableObject {
     @Published var showsKit = false
     /// The terminal that had the keyboard when ⌘K opened: skills go there.
     weak var paletteTarget: TerminalSession?
+    /// Text the palette opens with (test hook, and "search the project" links).
+    var paletteSeed: String?
     @Published var profiles: [LaunchProfile] = LaunchProfile.defaults
     /// The right panel's sections, selection and keyboard focus.
     let panel = PanelNavigator()
@@ -81,6 +83,8 @@ final class AppModel: ObservableObject {
     let usageLedger = UsageLedger()
     var usageInFlight = false
     @Published var showsCommit = false
+    /// Each workspace's files, for ⌘K and the project map.
+    @Published var projectFiles: [String: (files: [String], at: Date)] = [:]
     /// The change whose diff is open over the window.
     @Published var openChange: OpenChange?
     private var ticks = 0

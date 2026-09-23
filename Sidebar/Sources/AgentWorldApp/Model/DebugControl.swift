@@ -33,6 +33,10 @@ enum DebugControl {
             case "snapshot": snapshot(to: argument)
             case "panel": model.enterPanel()
             case "commit": model.showsCommit = true
+            case "palette":
+                model.paletteSeed = argument
+                model.showsPalette = false
+                DispatchQueue.main.async { model.showsPalette = true }
             case "grid":
                 // grid <rows> <columns> <profile name>: what the grid picker does on a click.
                 let words = argument.split(separator: " ", maxSplits: 2).map(String.init)
