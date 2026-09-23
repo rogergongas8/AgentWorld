@@ -15,6 +15,8 @@ final class TerminalTab: ObservableObject, Identifiable {
     @Published var layout = TileLayout.grid
     /// One pane blown up to fill the tab, the others still running behind it.
     @Published var zoomedID: UUID?
+    /// The grid's width when it was opened in a chosen shape (the grid picker).
+    @Published var gridColumns: Int?
 
     init(folder: String, sessions: [TerminalSession]) {
         self.folder = folder
@@ -309,6 +311,7 @@ final class AppModel: ObservableObject {
         } else {
             session.terminate()
             tab.sessions.removeAll { $0.id == session.id }
+            tab.gridColumns = nil
             objectWillChange.send()
         }
     }

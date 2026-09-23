@@ -33,7 +33,23 @@ enum DebugControl {
             case "snapshot": snapshot(to: argument)
             case "panel": model.enterPanel()
             case "commit": model.showsCommit = true
+            case "grid":
+                // grid <rows> <columns> <profile name>: what the grid picker does on a click.
+                let words = argument.split(separator: " ", maxSplits: 2).map(String.init)
+                if words.count == 3, let rows = Int(words[0]), let columns = Int(words[1]),
+                   let profile = model.profiles.first(where: { $0.name == words[2] }) {
+                    model.launchGrid(profile, rows: rows, columns: columns, in: model.selectedFolder)
+                }
             case "resume": model.resume(in: model.selectedFolder)
+            case "size":
+                // size <width> <height>: resize the main window (points).
+                let numbers = argument.split(separator: " ").compactMap { Double($0) }
+                if numbers.count == 2, let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }) {
+                    var frame = window.frame
+                    frame.origin.y += frame.height - numbers[1]
+                    frame.size = NSSize(width: numbers[0], height: numbers[1])
+                    window.setFrame(frame, display: true)
+                }
             case "rename-tab": model.selectedTab?.customTitle = argument.isEmpty ? nil : argument
             case "render-usage":
                 // render-usage <png>: the usage popover, drawn offscreen.

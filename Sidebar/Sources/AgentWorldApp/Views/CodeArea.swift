@@ -57,25 +57,24 @@ struct TabStrip: View {
                 .padding(.horizontal, 10)
             }
             if !model.folders.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .bottom, spacing: 2) {
-                        ForEach(tabs) { tab in
-                            TabChip(tab: tab, dragging: $dragging)
-                                .onDrag {
-                                    dragging = tab.id
-                                    return NSItemProvider(object: tab.id.uuidString as NSString)
-                                }
-                                .onDrop(of: [.text], delegate: TabDrop(target: tab.id, dragging: $dragging, model: model))
-                        }
-                        ChromeButton(symbol: "plus", active: model.showsLauncher, help: "Open another agent or terminal here (⌘T)") {
-                            model.showsLauncher = true
-                        }
-                        .padding(.leading, 4)
-                        .padding(.bottom, 4)
+                // As wide as the tabs while they fit (the rest of the strip moves
+                // the window); scrolling once they don't.
+                ViewThatFits(in: .horizontal) {
+                    tabRow
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) { tabRow }
+                            .onAppear { if let id = model.selectedTabID { proxy.scrollTo(id) } }
+                            .onChange(of: model.selectedTabID) { id in
+                                if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
+                            }
                     }
                 }
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(-1)
+                ChromeButton(symbol: "plus", active: model.showsLauncher, help: "Open another agent or terminal here (⌘T)") {
+                    model.showsLauncher = true
+                }
+                .padding(.leading, 4)
+                .padding(.bottom, 4)
+                .fixedSize()
             }
             WindowDragArea().frame(minWidth: 20, maxWidth: .infinity, maxHeight: .infinity)
             HStack(spacing: 6) {
@@ -90,6 +89,8 @@ struct TabStrip: View {
                     model.showsInspector.toggle()
                 }
             }
+            .fixedSize()
+            .layoutPriority(1)
             .frame(height: TabChip.height)
             .padding(.bottom, 1)
         }
@@ -109,6 +110,22 @@ struct TabStrip: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in fullScreen = true }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in fullScreen = false }
+    }
+}
+
+extension TabStrip {
+    fileprivate var tabRow: some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(tabs) { tab in
+                TabChip(tab: tab, dragging: $dragging)
+                    .onDrag {
+                        dragging = tab.id
+                        return NSItemProvider(object: tab.id.uuidString as NSString)
+                    }
+                    .onDrop(of: [.text], delegate: TabDrop(target: tab.id, dragging: $dragging, model: model))
+                    .id(tab.id)
+            }
+        }
     }
 }
 

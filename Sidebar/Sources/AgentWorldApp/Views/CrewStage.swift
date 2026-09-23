@@ -12,16 +12,28 @@ struct CrewStage: View {
     let sessions: [TerminalSession]
     var scale: CGFloat = 2.5
 
+    /// Two rows: past that the stage would push the workspaces off the column.
+    static let shown = 6
+
     var body: some View {
+        // The ones working or waiting on you first.
+        let busy = sessions.filter { $0.status.tone == .busy || $0.status.tone == .needsYou }
+        let ordered = busy + sessions.filter { !busy.contains($0) }
+        let visible = Array(ordered.prefix(Self.shown))
         VStack(alignment: .leading, spacing: 0) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 64 * scale / 2.5), spacing: 2, alignment: .bottom)], alignment: .leading, spacing: 8) {
-                ForEach(sessions) { session in
+                ForEach(visible) { session in
                     StageActor(session: session, scale: scale)
                         .onTapGesture { model.reveal(session) }
                 }
             }
             .padding(.horizontal, 6)
             .padding(.top, 4)
+            if sessions.count > visible.count {
+                Text("+\(sessions.count - visible.count) more")
+                    .font(.mono(10)).foregroundStyle(Palette.faint)
+                    .padding(.horizontal, 12).padding(.bottom, 4)
+            }
             Ground()
                 .frame(height: 6)
         }

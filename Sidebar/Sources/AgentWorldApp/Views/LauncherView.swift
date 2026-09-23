@@ -93,6 +93,7 @@ struct LauncherView: View {
                         .keyboardShortcut(.defaultAction)
                         .disabled(pickedCount == 0)
                     } else {
+                        GridLaunchButton(folder: folder)
                         Button {
                             picking = true
                         } label: {
@@ -337,5 +338,94 @@ struct InstallSheet: View {
         .padding(22)
         .frame(width: 480)
         .background(Palette.panel)
+    }
+}
+
+/// The quick way to open several: hover the boxes to pick how many (and in
+/// what shape), click, and they open tiled like that.
+struct GridLaunchButton: View {
+    @EnvironmentObject private var model: AppModel
+    let folder: String
+    @State private var showing = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button { showing.toggle() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.grid.3x3.fill").font(.system(size: 12))
+                Text("Grid").font(.mono(12, .semibold))
+            }
+            .foregroundStyle(hovering || showing ? Palette.cream : Palette.claude)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 7).fill(hovering || showing ? Palette.hover : Palette.raised))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.border))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Open several terminals at once, tiled (up to 3×3)")
+        .popover(isPresented: $showing, arrowEdge: .bottom) {
+            GridPicker(folder: folder) { showing = false }.environmentObject(model)
+        }
+    }
+}
+
+struct GridPicker: View {
+    @EnvironmentObject private var model: AppModel
+    let folder: String
+    let done: () -> Void
+    @AppStorage("gridProfile") private var profileID = ""
+    /// Rows × columns under the mouse.
+    @State private var shape: (rows: Int, columns: Int)?
+
+    private static let side = 3
+    private static let cell: CGFloat = 26
+
+    var body: some View {
+        let installed = model.launcherProfiles.filter { model.executable(for: $0) != nil }
+        let profile = installed.first { $0.id == profileID } ?? installed.first { $0.provider.isAgent } ?? installed.first
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Open", selection: Binding(get: { profile?.id ?? "" }, set: { profileID = $0 })) {
+                ForEach(installed) { item in
+                    Text(item.isCustom ? item.name : item.provider.name).tag(item.id)
+                }
+            }
+            .font(.mono(11.5))
+            .fixedSize()
+            VStack(spacing: 4) {
+                ForEach(0..<Self.side, id: \.self) { row in
+                    HStack(spacing: 4) {
+                        ForEach(0..<Self.side, id: \.self) { column in
+                            let lit = shape.map { row < $0.rows && column < $0.columns } ?? false
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(lit ? (profile?.provider.swiftColor ?? Palette.claude).opacity(0.85) : Palette.raised)
+                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(lit ? Color.clear : Palette.border))
+                                .frame(width: Self.cell, height: Self.cell)
+                                .contentShape(Rectangle())
+                                .onHover { inside in if inside { shape = (row + 1, column + 1) } }
+                                .onTapGesture {
+                                    guard let profile else { return }
+                                    model.launchGrid(profile, rows: row + 1, columns: column + 1, in: folder)
+                                    done()
+                                }
+                        }
+                    }
+                }
+            }
+            Text(caption(profile))
+                .font(.mono(10.5))
+                .foregroundStyle(shape == nil ? Palette.faint : Palette.text)
+                .frame(width: Self.cell * 3 + 8 + 80, alignment: .leading)
+        }
+        .padding(14)
+        .background(Palette.panel)
+    }
+
+    private func caption(_ profile: LaunchProfile?) -> String {
+        guard let shape else { return "Hover to choose, click to open" }
+        let count = shape.rows * shape.columns
+        let name = profile.map { $0.isCustom ? $0.name : $0.provider.shortName } ?? "terminals"
+        return "\(count) × \(name) · \(shape.columns) wide, \(shape.rows) tall"
     }
 }

@@ -39,7 +39,7 @@ struct TileGrid: View {
             }
         } else {
             VStack(spacing: 1) {
-                ForEach(Array(tab.layout.rows(for: sessions.count).enumerated()), id: \.offset) { _, row in
+                ForEach(Array(tab.layout.rows(for: sessions.count, columns: tab.gridColumns).enumerated()), id: \.offset) { _, row in
                     HStack(spacing: 1) {
                         ForEach(row, id: \.self) { index in
                             TilePane(tab: tab, session: sessions[index], showsHeader: true)
@@ -113,6 +113,7 @@ struct LayoutPicker: View {
                 Button {
                     tab.layout = layout
                     tab.zoomedID = nil
+                    tab.gridColumns = nil
                 } label: {
                     Image(systemName: layout.symbol)
                         .font(.system(size: 11.5))

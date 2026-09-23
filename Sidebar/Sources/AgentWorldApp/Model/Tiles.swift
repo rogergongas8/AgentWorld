@@ -33,24 +33,42 @@ enum TileLayout: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Rows of pane indices for `count` panes.
-    func rows(for count: Int) -> [[Int]] {
+    /// Rows of pane indices for `count` panes; `columns` fixes the grid's
+    /// width (a tab opened from the grid picker keeps the shape you picked).
+    func rows(for count: Int, columns: Int? = nil) -> [[Int]] {
         guard count > 0 else { return [] }
         let all = Array(0..<count)
         switch self {
         case .columns, .main: return [all]
         case .rows: return all.map { [$0] }
         case .grid:
-            // 3 → one row of 3; 5 → 3 over 2; otherwise as square as it gets.
-            let perRow = count <= 3 ? count : Int((Double(count) / 2).rounded(.up))
+            // 3 → one row of 3; 5 → 3 over 2; 9 → 3×3; otherwise two rows.
+            let perRow = columns.map { max(1, $0) }
+                ?? (count <= 3 ? count : count == 9 ? 3 : Int((Double(count) / 2).rounded(.up)))
             return stride(from: 0, to: count, by: perRow).map { Array(all[$0..<min($0 + perRow, count)]) }
         }
     }
 }
 
 extension AppModel {
-    /// Panes per tab: past six, each terminal gets too small to read.
-    static let maxPanes = 6
+    /// Panes per tab: a 3×3 grid, the most that still reads on a big screen.
+    static let maxPanes = 9
+
+    /// The grid picker: `rows` × `columns` of the same CLI, tiled in one tab
+    /// in exactly that shape.
+    func launchGrid(_ profile: LaunchProfile, rows: Int, columns: Int, in folder: String) {
+        let count = min(rows * columns, Self.maxPanes)
+        launchTogether(Array(repeating: profile, count: count), in: folder)
+        guard let tab = selectedTab else { return }
+        if rows == 1 {
+            tab.layout = .columns
+        } else if columns == 1 {
+            tab.layout = .rows
+        } else {
+            tab.layout = .grid
+            tab.gridColumns = columns
+        }
+    }
 
     /// Opens another CLI next to the ones already in `tab`.
     @discardableResult
@@ -59,6 +77,7 @@ extension AppModel {
         let session = TerminalSession(profile: profile, executable: executable, folder: tab.folder)
         tab.sessions.append(session)
         tab.zoomedID = nil
+        tab.gridColumns = nil
         objectWillChange.send()
         if focus { DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { session.focus() } }
         return session
