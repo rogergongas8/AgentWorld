@@ -232,6 +232,12 @@ extension AppModel {
                 }
             case "n":
                 if panel.section == .crew || panel.section == .skills { panel.creating = true }
+            case "m":
+                let list = items()
+                if list.indices.contains(panel.selection), case .change(let change) = list[panel.selection] {
+                    leavePanel()
+                    showOnMap(change, in: selectedFolder)
+                }
             default:
                 return false
             }

@@ -28,6 +28,8 @@ struct DiffSheet: View {
                     .help("Previous file (↑ or k)")
                 Button { model.stepDiff(1) } label: { Image(systemName: "chevron.down") }
                     .help("Next file (↓ or j)")
+                Button { model.showOnMap(change, in: open.folder) } label: { Image(systemName: "point.3.connected.trianglepath.dotted") }
+                    .help("Show it on the project map: what it uses and what uses it")
                 Button("Open") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: root).appendingPathComponent(change.path))
                 }

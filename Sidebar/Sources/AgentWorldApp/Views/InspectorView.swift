@@ -25,6 +25,9 @@ struct InspectorView: View {
                        session: agentSession, provider: provider)
                 .padding(.horizontal, 12)
                 .padding(.top, 12)
+            if panel.section == .changes {
+                MiniMap().padding(.horizontal, 12).padding(.top, 8)
+            }
             if panel.searching || !panel.query.isEmpty {
                 PanelSearchField(panel: panel)
                     .padding(.horizontal, 12)
@@ -377,7 +380,7 @@ struct PanelRow: View {
         case .agent, .skill: "Click (or ↩) for its card: what it does, use it, change it."
         case .tip: "Click to type it into the terminal."
         case .command: "Click to type it into the terminal."
-        case .change: "Click (or ↩) for its diff; u types its path into the terminal."
+        case .change: "Click (or ↩) for its diff; u types its path into the terminal; m shows it on the map."
         case .server: "An MCP server: tools from another service the CLI can call."
         case .plugin: "A plugin: a bundle of skills, agents, commands or servers."
         }

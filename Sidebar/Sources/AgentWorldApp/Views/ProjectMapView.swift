@@ -593,3 +593,84 @@ struct GraphifyHelp: View {
         .background(Palette.panel)
     }
 }
+
+/// The project map in small, at the top of the panel's Changes: where in
+/// the project the changes are, and what your agents are touching. Click
+/// for the full map.
+struct MiniMap: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var hovering = false
+
+    var body: some View {
+        let folder = model.selectedFolder
+        Group {
+            if let map = model.projectMap, map.folder == folder, !map.graph.nodes.isEmpty {
+                let changed = model.changesByWorkspacePath(folder)
+                let touched = touchedFiles(map)
+                TimelineView(.animation(minimumInterval: 1 / 12, paused: touched.isEmpty)) { context in
+                    let pulse = 0.5 + 0.5 * sin(context.date.timeIntervalSinceReferenceDate * 3)
+                    Canvas { graphics, size in
+                        let transform = ProjectMapView.Transform(bounds: map.bounds, size: size, zoom: 1, pan: .zero)
+                        for edge in map.graph.edges {
+                            var path = Path()
+                            path.move(to: transform.point(map.positions[edge.from]))
+                            path.addLine(to: transform.point(map.positions[edge.to]))
+                            graphics.stroke(path, with: .color(Palette.muted.opacity(0.12)), lineWidth: 0.5)
+                        }
+                        for (index, node) in map.graph.nodes.enumerated() {
+                            let center = transform.point(map.positions[index])
+                            let lit = changed[node.file] != nil
+                            let radius: CGFloat = lit ? 3 : 1.6
+                            let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+                            if let glow = touched[node.file] {
+                                graphics.fill(Path(ellipseIn: rect.insetBy(dx: -3 - 2 * pulse, dy: -3 - 2 * pulse)), with: .color(glow.opacity(0.35 + 0.25 * pulse)))
+                            }
+                            graphics.fill(Path(ellipseIn: rect), with: .color(lit ? Palette.warning : Palette.muted.opacity(0.55)))
+                        }
+                    }
+                }
+            } else {
+                Text(model.mapBuilding ? "Reading the project…" : "Map of the project")
+                    .font(.mono(10)).foregroundStyle(Palette.faint)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(height: 110)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.background))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(hovering ? Palette.claude.opacity(0.5) : Palette.border))
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(hovering ? Palette.cream : Palette.faint).padding(6)
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { model.openProjectMap() }
+        .help("Where the changes are in the project (ringed) and what agents touch (glowing). Click for the full map (⌘⇧M).")
+        .onAppear {
+            if model.projectMap?.folder != folder { model.buildProjectMap(folder, symbols: false) }
+        }
+    }
+
+    private func touchedFiles(_ map: ProjectMap) -> [String: Color] {
+        guard let changes = model.changes[map.folder] else { return [:] }
+        let prefix = map.folder.hasPrefix(changes.root + "/") ? String(map.folder.dropFirst(changes.root.count + 1)) + "/" : ""
+        var result: [String: Color] = [:]
+        for (path, ids) in changes.touchedBy where prefix.isEmpty || path.hasPrefix(prefix) {
+            guard let session = model.allSessions.last(where: { ids.contains($0.id) }) else { continue }
+            result[String(path.dropFirst(prefix.count))] = session.provider.swiftColor
+        }
+        return result
+    }
+}
+
+extension AppModel {
+    /// Opens the map on `path` (relative to the repository root that git reports).
+    func showOnMap(_ change: FileChange, in folder: String) {
+        let root = changes[folder]?.root ?? folder
+        let prefix = folder.hasPrefix(root + "/") ? String(folder.dropFirst(root.count + 1)) + "/" : ""
+        let relative = change.path.hasPrefix(prefix) ? String(change.path.dropFirst(prefix.count)) : change.path
+        openChange = nil
+        openProjectMap()
+        mapFocus = relative
+    }
+}
