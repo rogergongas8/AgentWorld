@@ -327,15 +327,18 @@ struct IntegrationSettings: View {
                 Toggle("Install the agentworld skill", isOn: $preferences.installsSkill)
                     .onChange(of: preferences.installsSkill) { _ in status = AgentWorldSkill.status() }
                 ForEach(status, id: \.cli) { entry in
-                    LabeledContent("~/\(entry.cli)/skills/agentworld") {
+                    LabeledContent {
                         Text(entry.yours ? "your own copy" : entry.installed ? "installed" : "not installed")
                             .foregroundStyle(entry.installed ? Color.green : .secondary)
+                    } label: {
+                        Text(entry.cli)
+                        Text(entry.path).font(.caption.monospaced())
                     }
                 }
             } header: {
                 Text("Agents driving the app")
             } footer: {
-                Text("The skill teaches CLIs that read skills (Claude Code, Codex) to open panes beside them, hand off work and talk through their character with agentworld-ctl. Every other CLI can run agentworld-ctl help. A copy you edited (without the marker line) is never touched.")
+                Text("The skill teaches each agent CLI set up here to open panes beside it, hand off work and talk through its character with agentworld-ctl, so any of them can lead a workflow. A CLI that doesn't load skills can still run agentworld-ctl help. A copy you edited (without the marker line) is never touched.")
                     .settingsFootnote()
             }
             Section {

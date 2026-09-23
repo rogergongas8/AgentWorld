@@ -1,10 +1,11 @@
 import Foundation
 
 /// The `agentworld` skill: teaches an agent CLI running inside one of the
-/// app's terminals to use `agentworld-ctl`. Installed on launch for every CLI
-/// here that reads skills (`~/.claude/skills`, `~/.codex/skills`); a copy
-/// you've edited (one without the marker line) is left alone. CLIs without
-/// skills still get there: `agentworld-ctl help` explains itself.
+/// app's terminals to use `agentworld-ctl`. Installed on launch into the
+/// `skills/` folder of every agent CLI set up here (Claude Code, Codex,
+/// Gemini, Kimi, Grok, OpenCode, Cursor: the Agent Skills format they share);
+/// a copy you've edited (one without the marker line) is left alone. A CLI
+/// that doesn't load skills still gets there: `agentworld-ctl help` explains itself.
 enum AgentWorldSkill {
     static let marker = "<!-- installed by AgentWorld.app: edits are overwritten; delete this line to keep your own version -->"
 
@@ -67,8 +68,13 @@ enum AgentWorldSkill {
 
     """
 
-    /// Config folders of CLIs that load `skills/<name>/SKILL.md`.
-    static let skillHomes = [".claude", ".codex"]
+    /// Each CLI's config folder, where it loads `skills/<name>/SKILL.md`
+    /// (the same folders the panel reads skills from).
+    static let homes: [(name: String, folder: String)] = [
+        ("Claude Code", ".claude"), ("Codex", ".codex"), ("Gemini CLI", ".gemini"), ("Kimi CLI", ".kimi"),
+        ("Grok CLI", ".grok"), ("OpenCode", ".config/opencode"), ("Cursor Agent", ".cursor"),
+    ]
+    static var skillHomes: [String] { homes.map(\.folder) }
 
     static func install() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -92,12 +98,12 @@ enum AgentWorldSkill {
     }
 
     /// The CLIs here that have the skill, and whether it's AgentWorld's copy.
-    static func status() -> [(cli: String, installed: Bool, yours: Bool)] {
+    static func status() -> [(cli: String, path: String, installed: Bool, yours: Bool)] {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        return skillHomes.filter { FileManager.default.fileExists(atPath: home.appendingPathComponent($0).path) }.map { cli in
-            let file = home.appendingPathComponent(cli + "/skills/agentworld/SKILL.md")
+        return homes.filter { FileManager.default.fileExists(atPath: home.appendingPathComponent($0.folder).path) }.map { cli in
+            let file = home.appendingPathComponent(cli.folder + "/skills/agentworld/SKILL.md")
             let text = try? String(contentsOf: file, encoding: .utf8)
-            return (cli, text != nil, text.map { !$0.contains(marker) } ?? false)
+            return (cli.name, "~/" + cli.folder + "/skills/agentworld", text != nil, text.map { !$0.contains(marker) } ?? false)
         }
     }
 
