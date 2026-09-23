@@ -4,6 +4,8 @@ import Foundation
 /// A workspace's project map: its dependency graph laid out, ready to draw.
 struct ProjectMap {
     let folder: String
+    /// Files (the app's own reading), or symbols from graphify's graph.
+    let symbols: Bool
     let graph: ProjectGraph
     /// Layout positions, same order as `graph.nodes`.
     let positions: [CGPoint]
@@ -20,8 +22,9 @@ struct ProjectMap {
     let hubs: [(node: Int, degree: Int)]
     let bridges: [(Int, Int)]
 
-    init(folder: String, graph: ProjectGraph) {
+    init(folder: String, graph: ProjectGraph, symbols: Bool = false, communities: [Int]? = nil) {
         self.folder = folder
+        self.symbols = symbols
         self.graph = graph
         let counts = Dictionary(grouping: graph.nodes.map(\.group), by: { $0 }).mapValues(\.count)
         groups = counts.keys.sorted { counts[$0]! != counts[$1]! ? counts[$0]! > counts[$1]! : $0 < $1 }
@@ -36,7 +39,13 @@ struct ProjectMap {
         self.uses = uses
         self.usedBy = usedBy
         let links = graph.edges.map { ($0.from, $0.to) }
-        let cluster = GraphAnalysis.communities(nodes: graph.nodes.count, edges: links)
+        // graphify's own communities when it found them; ours otherwise.
+        let cluster = communities.map { raw -> [Int] in
+            let sizes = Dictionary(grouping: raw, by: { $0 }).mapValues(\.count)
+            let order = sizes.keys.sorted { sizes[$0]! != sizes[$1]! ? sizes[$0]! > sizes[$1]! : $0 < $1 }
+            let dense = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
+            return raw.map { dense[$0]! }
+        } ?? GraphAnalysis.communities(nodes: graph.nodes.count, edges: links)
         self.cluster = cluster
         hubs = GraphAnalysis.hubs(nodes: graph.nodes.count, edges: links, count: 8)
         bridges = GraphAnalysis.bridges(edges: links, community: cluster, count: 6)
@@ -47,6 +56,7 @@ struct ProjectMap {
             let folder = folders.max { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }?.key ?? ""
             let hub = members.max { uses[$0].count + usedBy[$0].count < uses[$1].count + usedBy[$1].count }
             let short = (folder as NSString).lastPathComponent
+            if symbols, let hub { return short + " · " + graph.nodes[hub].name }
             return members.count == 1 ? graph.nodes[members[0]].name
                 : short + (hub.map { " · " + ((graph.nodes[$0].name as NSString).deletingPathExtension) } ?? "")
         }
@@ -65,18 +75,30 @@ struct ProjectMap {
 }
 
 extension AppModel {
-    /// Builds (or rebuilds) the map of `folder` off the main thread.
-    func buildProjectMap(_ folder: String) {
+    /// Builds (or rebuilds) the map of `folder` off the main thread: files,
+    /// or graphify's symbols when asked and it has a graph there.
+    func buildProjectMap(_ folder: String, symbols: Bool? = nil) {
         guard !mapBuilding else { return }
         mapBuilding = true
+        let wantsSymbols = symbols ?? (projectMap?.folder == folder ? projectMap?.symbols ?? false : false)
         Task.detached(priority: .userInitiated) {
-            let files = ProjectFiles.list(folder)
-            let map = ProjectMap(folder: folder, graph: ProjectGraph.build(root: folder, files: files))
+            let map: ProjectMap
+            if wantsSymbols, let graphify = GraphifyGraph.load(folder: folder) {
+                let converted = graphify.projectGraph(root: folder)
+                map = ProjectMap(folder: folder, graph: converted.graph, symbols: true, communities: converted.communities)
+            } else {
+                map = ProjectMap(folder: folder, graph: ProjectGraph.build(root: folder, files: ProjectFiles.list(folder)))
+            }
             await MainActor.run {
                 self.mapBuilding = false
                 self.projectMap = map
             }
         }
+    }
+
+    /// Whether graphify has left a graph in `folder` (graphify-out/graph.json).
+    func hasGraphify(_ folder: String) -> Bool {
+        FileManager.default.fileExists(atPath: GraphifyGraph.url(in: folder).path)
     }
 
     func openProjectMap() {

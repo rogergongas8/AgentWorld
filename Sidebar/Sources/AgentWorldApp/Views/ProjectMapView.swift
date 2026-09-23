@@ -83,10 +83,11 @@ struct ProjectMapView: View {
             Image(systemName: "point.3.connected.trianglepath.dotted").foregroundStyle(Palette.claude)
             Text("Map of \(model.workspaceName(model.selectedFolder))").font(.mono(14, .bold)).foregroundStyle(Palette.cream)
             if let map = model.projectMap, map.folder == model.selectedFolder {
-                Text("\(map.graph.nodes.count) files · \(map.graph.edges.count) links")
+                Text("\(map.graph.nodes.count) \(map.symbols ? "symbols" : "files") · \(map.graph.edges.count) links")
                     .font(.mono(11)).foregroundStyle(Palette.muted)
             }
             Spacer()
+            GraphSourcePicker()
             Picker("Color by", selection: $colorBy) {
                 Text("Clusters").tag("clusters")
                 Text("Folders").tag("folders")
@@ -159,12 +160,12 @@ struct ProjectMapView: View {
                         let radius = Self.radius(lines: node.lines) * min(2, max(0.7, sqrt(zoom)))
                         let dimmed = (neighbors.map { !$0.contains(index) } ?? false) || (matches.map { !$0.contains(index) } ?? false)
                         let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-                        if let glow = touched[node.path] {
+                        if let glow = touched[node.file] {
                             let halo = rect.insetBy(dx: -5 - 3 * pulse, dy: -5 - 3 * pulse)
                             graphics.fill(Path(ellipseIn: halo), with: .color(glow.opacity(0.25 + 0.2 * pulse)))
                         }
                         graphics.fill(Path(ellipseIn: rect), with: .color(color(map, index).opacity(dimmed ? 0.18 : 1)))
-                        if changed[node.path] != nil {
+                        if changed[node.file] != nil {
                             graphics.stroke(Path(ellipseIn: rect.insetBy(dx: -2.5, dy: -2.5)), with: .color(Palette.warning.opacity(dimmed ? 0.3 : 1)), lineWidth: 1.6)
                         }
                         if index == selected || index == pathEnd {
@@ -230,8 +231,9 @@ struct ProjectMapView: View {
     private func tooltip(_ map: ProjectMap, _ index: Int) -> some View {
         let node = map.graph.nodes[index]
         return VStack(alignment: .leading, spacing: 2) {
-            Text(node.path).font(.mono(10.5, .semibold)).foregroundStyle(Palette.cream)
-            Text("\(node.lines) lines · uses \(map.uses[index].count) · used by \(map.usedBy[index].count)")
+            Text(map.symbols ? node.name : node.path).font(.mono(10.5, .semibold)).foregroundStyle(Palette.cream)
+            Text((map.symbols ? [node.kind, node.file].compactMap { $0 }.joined(separator: " · ") + " · " : "\(node.lines) lines · ")
+                 + "uses \(map.uses[index].count) · used by \(map.usedBy[index].count)")
                 .font(.mono(9.5)).foregroundStyle(Palette.muted)
         }
         .padding(.horizontal, 8)
@@ -278,8 +280,8 @@ struct ProjectMapView: View {
 
     private func detail(_ map: ProjectMap, _ index: Int) -> some View {
         let node = map.graph.nodes[index]
-        let full = URL(fileURLWithPath: map.folder).appendingPathComponent(node.path).path
-        let change = model.changesByWorkspacePath(map.folder)[node.path]
+        let full = URL(fileURLWithPath: map.folder).appendingPathComponent(node.file).path
+        let change = model.changesByWorkspacePath(map.folder)[node.file]
         let target = model.focusedSession ?? model.panelSession ?? model.allSessions.first { $0.folder == map.folder }
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -288,9 +290,10 @@ struct ProjectMapView: View {
                         Circle().fill(color(map, index)).frame(width: 9, height: 9)
                         Text(node.name).font(.mono(13.5, .bold)).foregroundStyle(Palette.cream).lineLimit(2)
                     }
-                    Text(node.path).font(.mono(10)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+                    Text(map.symbols ? [node.kind, node.file].compactMap { $0 }.joined(separator: " · ") : node.path)
+                        .font(.mono(10)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
-                        Text("\(node.lines) lines").font(.mono(10.5)).foregroundStyle(Palette.text)
+                        if !map.symbols { Text("\(node.lines) lines").font(.mono(10.5)).foregroundStyle(Palette.text) }
                         if let change {
                             ChangeBadge(kind: change.kind).scaleEffect(0.8)
                             LineCounts(change: change)
@@ -302,11 +305,15 @@ struct ProjectMapView: View {
                         Button { model.reveal(target); model.mention(full, in: target) } label: {
                             Label("Mention in \(target.label)", systemImage: "text.cursor")
                         }
+                        if target.provider.isAgent {
                         Button {
                             model.reveal(target)
-                            target.type("Explain what \(node.path) does and how it fits with the files it uses and the ones that use it. ")
+                            target.type(map.symbols
+                                ? "Explain what \(node.name) in \(node.file) does and how it connects to what it uses and what uses it. "
+                                : "Explain what \(node.path) does and how it fits with the files it uses and the ones that use it. ")
                         } label: {
                             Label("Ask \(target.provider.shortName) to explain it", systemImage: "questionmark.bubble")
+                        }
                         }
                     }
                     if let change {
@@ -410,7 +417,7 @@ struct ProjectMapView: View {
                     .help("A link between two clusters that rarely touch: \(map.clusterNames[map.cluster[bridge.0]]) and \(map.clusterNames[map.cluster[bridge.1]])")
                 }
             }
-            Text("⇧-click a second file for the way between them").font(.mono(9)).foregroundStyle(Palette.faint).padding(.top, 4)
+            Text("⇧-click a second one for the way between them").font(.mono(9)).foregroundStyle(Palette.faint).padding(.top, 4)
         }
         .padding(10)
         .frame(width: 250, alignment: .leading)
@@ -505,4 +512,84 @@ struct ScrollZoom: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: View, context: Context) { nsView.onScroll = onScroll }
+}
+
+/// Files (read by the app) or Symbols (graphify's graph, when it's there);
+/// without one, a way to get it.
+struct GraphSourcePicker: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var explaining = false
+
+    var body: some View {
+        let folder = model.selectedFolder
+        let symbols = model.projectMap?.folder == folder && model.projectMap?.symbols == true
+        let available = model.hasGraphify(folder)
+        HStack(spacing: 2) {
+            segment("Files", on: !symbols) { model.buildProjectMap(folder, symbols: false) }
+            segment("Symbols", on: symbols) {
+                if available { model.buildProjectMap(folder, symbols: true) } else { explaining = true }
+            }
+            .popover(isPresented: $explaining, arrowEdge: .bottom) { GraphifyHelp(folder: folder) { explaining = false } }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Palette.background))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.border))
+        .help(available ? "Files, or graphify's classes and functions" : "Symbols need graphify: click to see how")
+    }
+
+    private func segment(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.mono(11, on ? .semibold : .regular))
+                .foregroundStyle(on ? Palette.cream : Palette.muted)
+                .padding(.horizontal, 9)
+                .frame(height: 22)
+                .background(RoundedRectangle(cornerRadius: 5).fill(on ? Palette.selected : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// How to get a symbol map: graphify, run by your agent or by you.
+struct GraphifyHelp: View {
+    @EnvironmentObject private var model: AppModel
+    let folder: String
+    let done: () -> Void
+
+    var body: some View {
+        let agent = model.allSessions.first { $0.folder == folder && $0.provider.isAgent }
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Symbols come from graphify").font(.mono(12.5, .bold)).foregroundStyle(Palette.cream)
+            Text("graphify reads the code with real parsers (tree-sitter, 30+ languages) and maps classes and functions and how they call each other. The app shows its graph when there's a graphify-out/graph.json in the workspace.")
+                .font(.mono(10.5)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+            Text("pipx install graphifyy && graphify install")
+                .font(.mono(11)).foregroundStyle(Palette.text)
+                .textSelection(.enabled)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Palette.background))
+            HStack {
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString("pipx install graphifyy && graphify install", forType: .string)
+                }
+                if let agent {
+                    Button("Ask \(agent.provider.shortName) to build it") {
+                        done()
+                        model.showsMap = false
+                        model.reveal(agent)
+                        agent.type("/graphify .")
+                    }
+                    .help("Types /graphify . into \(agent.label): press return there once graphify is installed")
+                }
+                Spacer()
+                Link("graphify on GitHub", destination: URL(string: "https://github.com/Graphify-Labs/graphify")!)
+                    .font(.mono(10.5))
+            }
+        }
+        .padding(14)
+        .frame(width: 380)
+        .background(Palette.panel)
+    }
 }

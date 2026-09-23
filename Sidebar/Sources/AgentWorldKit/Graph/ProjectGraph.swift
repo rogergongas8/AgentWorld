@@ -12,18 +12,43 @@ public struct ProjectGraph: Sendable, Equatable {
         /// project that tells files apart (`Sources/App` rather than `Sources`).
         public let group: String
         public let lines: Int
+        /// The file on disk: the node itself for a file map, where a symbol
+        /// lives for a symbol map (graphify's).
+        public let file: String
+        /// A symbol's name ("login()") and kind ("function"); nil for files.
+        public let label: String?
+        public let kind: String?
         public var id: String { path }
-        public var name: String { (path as NSString).lastPathComponent }
+        public var name: String { label ?? (path as NSString).lastPathComponent }
+
+        public init(path: String, group: String, lines: Int, file: String? = nil, label: String? = nil, kind: String? = nil) {
+            self.path = path
+            self.group = group
+            self.lines = lines
+            self.file = file ?? path
+            self.label = label
+            self.kind = kind
+        }
     }
 
     public struct Edge: Sendable, Equatable, Hashable {
         /// Node indices: `from` uses `to`.
         public let from: Int
         public let to: Int
+
+        public init(from: Int, to: Int) {
+            self.from = from
+            self.to = to
+        }
     }
 
     public let nodes: [Node]
     public let edges: [Edge]
+
+    public init(nodes: [Node], edges: [Edge]) {
+        self.nodes = nodes
+        self.edges = edges
+    }
 
     public static let maxNodes = 900
     static let sourceExtensions: Set<String> = [

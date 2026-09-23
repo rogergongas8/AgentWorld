@@ -201,4 +201,26 @@ public struct GraphifyGraph: Sendable, Equatable {
         }
         return nodes.isEmpty ? nil : GraphifyGraph(nodes: nodes, links: links)
     }
+
+    /// As a project graph for the map: each symbol a node in its file's
+    /// folder, sized by how connected it is, and its communities kept.
+    public func projectGraph(root: String) -> (graph: ProjectGraph, communities: [Int]?) {
+        let prefix = URL(fileURLWithPath: root).standardizedFileURL.path + "/"
+        func relative(_ file: String?) -> String {
+            guard let file else { return "" }
+            return file.hasPrefix(prefix) ? String(file.dropFirst(prefix.count)) : file
+        }
+        let files = nodes.map { relative($0.file) }
+        let groups = ProjectGraph.groupNames(files.map { $0.isEmpty ? "(unknown)/x" : $0 })
+        var degree = [Int](repeating: 0, count: nodes.count)
+        for link in links { degree[link.from] += 1; degree[link.to] += 1 }
+        let graphNodes = nodes.enumerated().map { index, node in
+            ProjectGraph.Node(path: node.id, group: groups[index], lines: max(1, degree[index] * 25),
+                              file: files[index].isEmpty ? node.id : files[index], label: node.label, kind: node.kind)
+        }
+        let edges = Set(links.filter { $0.from != $0.to }.map { ProjectGraph.Edge(from: $0.from, to: $0.to) })
+            .sorted { ($0.from, $0.to) < ($1.from, $1.to) }
+        let communities = nodes.allSatisfy { $0.community != nil } ? nodes.map { $0.community! } : nil
+        return (ProjectGraph(nodes: graphNodes, edges: edges), communities)
+    }
 }

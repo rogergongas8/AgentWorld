@@ -34,6 +34,7 @@ enum DebugControl {
             case "panel": model.enterPanel()
             case "commit": model.showsCommit = true
             case "map": model.openProjectMap()
+            case "map-symbols": model.buildProjectMap(model.selectedFolder, symbols: argument != "off")
             case "map-select": model.mapFocus = argument
             case "palette":
                 model.paletteSeed = argument
