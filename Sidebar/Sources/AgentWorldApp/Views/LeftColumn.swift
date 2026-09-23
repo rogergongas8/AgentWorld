@@ -143,7 +143,12 @@ struct FolderRow: View {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.triangle.branch").font(.system(size: 8))
                             Text(branch).lineLimit(1)
-                            if git?.dirty == true { Circle().fill(Palette.warning).frame(width: 5, height: 5) }
+                            if let changes = model.changes[folder], !changes.files.isEmpty {
+                                // What's uncommitted, once the Changes reader has looked.
+                                Text("· \(changes.files.count) changed").foregroundStyle(Palette.warning.opacity(0.85))
+                            } else if git?.dirty == true {
+                                Circle().fill(Palette.warning).frame(width: 5, height: 5)
+                            }
                         }
                         .font(.mono(9.5))
                         .foregroundStyle(Palette.faint)

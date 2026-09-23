@@ -116,6 +116,9 @@ struct TabChip: View {
     @Binding var dragging: UUID?
     @State private var hovering = false
     @State private var hoveringClose = false
+    @State private var renaming = false
+    @State private var newTitle = ""
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         let selected = model.selectedTabID == tab.id && !model.showsLauncher
@@ -124,10 +127,22 @@ struct TabChip: View {
             if let lead = tab.sessions.first {
                 TabFace(session: lead).frame(width: 16, height: 10)
             }
-            Text(tab.title)
-                .font(.mono(11.5, selected ? .semibold : .regular))
-                .foregroundStyle(selected ? Palette.cream : hovering ? Palette.text : Palette.muted)
-                .lineLimit(1)
+            if renaming {
+                TextField("Tab name", text: $newTitle)
+                    .textFieldStyle(.plain)
+                    .font(.mono(11.5, .semibold))
+                    .foregroundStyle(Palette.cream)
+                    .focused($nameFocused)
+                    .frame(minWidth: 90)
+                    .onSubmit { finishRenaming() }
+                    .onExitCommand { renaming = false }
+                    .onChange(of: nameFocused) { focused in if !focused { finishRenaming() } }
+            } else {
+                Text(tab.title)
+                    .font(.mono(11.5, selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Palette.cream : hovering ? Palette.text : Palette.muted)
+                    .lineLimit(1)
+            }
             Spacer(minLength: 4)
             HStack(spacing: 3) {
                 ForEach(tab.sessions) { session in TabStatusDot(session: session) }
@@ -176,11 +191,29 @@ struct TabChip: View {
             DispatchQueue.main.async { tab.sessions.first?.focus() }
         }
         .contextMenu {
+            Button("Rename Tab…") {
+                newTitle = tab.title
+                renaming = true
+                DispatchQueue.main.async { nameFocused = true }
+            }
+            if tab.customTitle != nil {
+                Button("Use the Automatic Name") { tab.customTitle = nil }
+            }
+            Divider()
             Button("Close Tab") { model.requestClose(tab) }
             Button("Close Other Tabs") { model.closeTabs(besides: tab) }
             Button("Close Tabs to the Right") { model.closeTabs(besides: tab, onlyAfter: true) }
         }
         .help(tab.sessions.map { "\($0.label): \($0.status.text)" }.joined(separator: "\n"))
+    }
+}
+
+extension TabChip {
+    fileprivate func finishRenaming() {
+        guard renaming else { return }
+        renaming = false
+        let name = newTitle.trimmingCharacters(in: .whitespaces)
+        tab.customTitle = name.isEmpty ? nil : name
     }
 }
 

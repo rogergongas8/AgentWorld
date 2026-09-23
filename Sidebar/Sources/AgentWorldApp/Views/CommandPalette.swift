@@ -227,6 +227,26 @@ struct PaletteItem: Identifiable {
                                  symbol: "sidebar.right", keywords: "inspector panel right", weight: 1) { $0.showsInspector.toggle() })
         items.append(PaletteItem(id: "act:kit", kind: "view", title: "Browse the kit", subtitle: "every skill, MCP server, plugin and command, per CLI",
                                  symbol: "shippingbox", color: Palette.mcp, keywords: "mcp plugins skills commands library", weight: 1) { $0.showsKit = true })
+        items.append(PaletteItem(id: "act:sidebar", kind: "view", title: model.showsSidebar ? "Hide workspaces" : "Show workspaces",
+                                 symbol: "sidebar.left", keywords: "sidebar left column folders", weight: 1) { $0.showsSidebar.toggle() })
+        items.append(PaletteItem(id: "act:settings", kind: "app", title: "Settings…", subtitle: "font, notifications, CLIs, profiles",
+                                 symbol: "gearshape", keywords: "preferences options config", weight: 1) { $0.openSettings() })
+        if let changes = model.changes[model.selectedFolder], !changes.files.isEmpty {
+            items.append(PaletteItem(id: "act:changes", kind: "git", title: "Changes: \(changes.files.count) files",
+                                     subtitle: "+\(changes.added) −\(changes.removed) uncommitted, and who touched them",
+                                     symbol: "plusminus", color: Palette.warning, keywords: "git diff status modified", weight: 3) { model in
+                model.showsInspector = true
+                model.panel.section = .changes
+                model.enterPanel()
+            })
+            for change in changes.files.prefix(30) {
+                items.append(PaletteItem(id: "diff:\(change.path)", kind: "diff", title: change.name,
+                                         subtitle: (change.folder.isEmpty ? "" : change.folder + " · ") + change.kind.rawValue,
+                                         symbol: "doc.text.magnifyingglass", color: Palette.warning, keywords: "diff git " + change.path, weight: 2) { model in
+                    model.openDiff(change, in: model.selectedFolder)
+                })
+            }
+        }
         if let tab = model.selectedTab, tab.sessions.count > 1 {
             for layout in TileLayout.allCases {
                 items.append(PaletteItem(id: "layout:\(layout.rawValue)", kind: "layout", title: "Layout: \(layout.title)",

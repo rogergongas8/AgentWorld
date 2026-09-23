@@ -21,8 +21,12 @@ final class TerminalTab: ObservableObject, Identifiable {
         self.sessions = sessions
     }
 
-    /// "Claude", or for several panes "Terminal ×3", "Claude + Codex ×2".
+    /// A name you gave the tab (right-click › Rename), over the automatic one.
+    @Published var customTitle: String?
+
+    /// Yours, else "Claude", or for several panes "Terminal ×3", "Claude + Codex ×2".
     var title: String {
+        if let customTitle, !customTitle.isEmpty { return customTitle }
         guard sessions.count > 1 else { return sessions.first?.label ?? "" }
         var names: [String] = []
         var counts: [String: Int] = [:]
@@ -46,8 +50,13 @@ final class AppModel: ObservableObject {
     @Published var selectedTabID: UUID?
     /// The launcher is shown instead of a terminal (the "+" tab).
     @Published var showsLauncher = true
-    @Published var showsInspector = true
-    @Published var showsSidebar = true
+    /// Both side columns come back the way you left them.
+    @Published var showsInspector = UserDefaults.standard.object(forKey: "showsInspector") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showsInspector, forKey: "showsInspector") }
+    }
+    @Published var showsSidebar = UserDefaults.standard.object(forKey: "showsSidebar") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showsSidebar, forKey: "showsSidebar") }
+    }
     /// ⌘K and the kit browser, over everything.
     @Published var showsPalette = false
     @Published var showsKit = false
