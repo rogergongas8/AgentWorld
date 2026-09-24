@@ -10,6 +10,7 @@ enum PanelItem: Identifiable {
     case plugin(PluginDefinition)
     case command(CommandDefinition)
     case change(FileChange)
+    case note(MemoryNote)
     case tip(Suggestion)
 
     var id: String {
@@ -20,6 +21,7 @@ enum PanelItem: Identifiable {
         case .plugin(let plugin): "plugin:" + plugin.name
         case .command(let command): "command:" + command.qualifiedName
         case .change(let change): "change:" + change.path
+        case .note(let note): "note:" + note.id
         case .tip(let tip): "tip:" + tip.name
         }
     }
@@ -36,6 +38,7 @@ enum PanelItem: Identifiable {
         case .plugin(let plugin): haystack = [plugin.name, plugin.description ?? ""].joined(separator: " ")
         case .command(let command): haystack = [command.qualifiedName, command.description ?? ""].joined(separator: " ")
         case .change(let change): haystack = change.path + " " + change.kind.rawValue
+        case .note(let note): haystack = [note.name, note.description, note.tags.joined(separator: " "), note.body].joined(separator: " ")
         case .tip(let tip): haystack = tip.name + " " + tip.reasons.joined(separator: " ")
         }
         let text = haystack.lowercased()
@@ -57,7 +60,7 @@ enum PanelItem: Identifiable {
 @MainActor
 final class PanelNavigator: ObservableObject {
     enum Section: Int, CaseIterable, Identifiable {
-        case crew, skills, tools, changes, tips
+        case crew, skills, tools, changes, memory, tips
 
         var id: Int { rawValue }
 
@@ -67,6 +70,7 @@ final class PanelNavigator: ObservableObject {
             case .skills: "Skills"
             case .tools: "Tools"
             case .changes: "Changes"
+            case .memory: "Memory"
             case .tips: "Tips"
             }
         }
@@ -77,6 +81,7 @@ final class PanelNavigator: ObservableObject {
             case .skills: "books.vertical"
             case .tools: "powerplug"
             case .changes: "plusminus"
+            case .memory: "brain"
             case .tips: "sparkles"
             }
         }
@@ -149,6 +154,8 @@ extension AppModel {
             return config.mcpServers.map(PanelItem.server) + config.plugins.map(PanelItem.plugin) + config.commands.map(PanelItem.command)
         case .changes:
             return (changes[selectedFolder]?.files ?? []).map(PanelItem.change)
+        case .memory:
+            return workspaceMemory.map(PanelItem.note)
         case .tips:
             return tips(for: panelSession?.provider.isAgent == true ? panelSession : nil, in: selectedFolder).map(PanelItem.tip)
         }
@@ -220,7 +227,7 @@ extension AppModel {
             switch event.charactersIgnoringModifiers {
             case "/":
                 panel.searching = true
-            case "1", "2", "3", "4", "5":
+            case "1", "2", "3", "4", "5", "6":
                 if let digit = Int(event.charactersIgnoringModifiers ?? ""), let section = PanelNavigator.Section(rawValue: digit - 1) {
                     panel.section = section
                 }
@@ -242,6 +249,13 @@ extension AppModel {
                 if list.indices.contains(panel.selection), case .change(let change) = list[panel.selection] {
                     leavePanel()
                     showOnMap(change, in: selectedFolder)
+                }
+            case "o":
+                let list = items()
+                if list.indices.contains(panel.selection), case .note(let note) = list[panel.selection] {
+                    Obsidian.open(vault: memoryVault.root, file: note.url)
+                } else if panel.section == .memory {
+                    Obsidian.open(vault: memoryVault.root)
                 }
             default:
                 return false
@@ -268,6 +282,10 @@ extension AppModel {
     func activate(_ item: PanelItem, detail: Bool) {
         if detail, case .change(let change) = item {
             openDiff(change, in: selectedFolder)
+            return
+        }
+        if detail, case .note(let note) = item {
+            openNotes(note.id)
             return
         }
         if detail, item.kitItem != nil {
@@ -303,6 +321,10 @@ extension AppModel {
             let full = URL(fileURLWithPath: root).appendingPathComponent(change.path).path
             let relative = full.hasPrefix(session.folder + "/") ? String(full.dropFirst(session.folder.count + 1)) : full
             session.type(relative + " ")
+        case .note(let note):
+            guard let session = panelSession else { return }
+            leavePanel()
+            mention(note, in: session)
         case .server, .plugin:
             break
         }

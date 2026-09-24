@@ -1,3 +1,4 @@
+import AgentWorldKit
 import AppKit
 import Foundation
 import ServiceManagement
@@ -51,6 +52,18 @@ final class Preferences: ObservableObject {
         }
     }
 
+    // MARK: Memory
+
+    /// The shared memory's vault (also an Obsidian vault).
+    @Published var memoryFolder: String {
+        didSet {
+            defaults.set(memoryFolder, forKey: "memoryFolder")
+            MemoryVault.saveConfigured(URL(fileURLWithPath: memoryFolder, isDirectory: true))
+        }
+    }
+    /// Keep the memory's MCP server registered with every CLI set up here.
+    @Published var connectsMemory: Bool { didSet { defaults.set(connectsMemory, forKey: "connectsMemory") } }
+
     /// Called when the terminal font or keys change, to restyle open terminals.
     var onTerminalLookChange: (() -> Void)?
 
@@ -69,6 +82,8 @@ final class Preferences: ObservableObject {
             "dockBadge": true,
             "bouncesDock": true,
             "installsSkill": true,
+            "memoryFolder": MemoryVault.defaultRoot.path,
+            "connectsMemory": true,
         ])
         projectsFolder = defaults.string(forKey: "projectsFolder") ?? Self.suggestedProjectsFolder
         confirmClosingBusy = defaults.bool(forKey: "confirmClosingBusy")
@@ -84,6 +99,10 @@ final class Preferences: ObservableObject {
         dockBadge = defaults.bool(forKey: "dockBadge")
         bouncesDock = defaults.bool(forKey: "bouncesDock")
         installsSkill = defaults.bool(forKey: "installsSkill")
+        // $AGENTWORLD_MEMORY wins for this run (scripted test runs use a scratch vault).
+        memoryFolder = ProcessInfo.processInfo.environment["AGENTWORLD_MEMORY"]
+            ?? defaults.string(forKey: "memoryFolder") ?? MemoryVault.defaultRoot.path
+        connectsMemory = defaults.bool(forKey: "connectsMemory")
     }
 
     static var suggestedProjectsFolder: String {

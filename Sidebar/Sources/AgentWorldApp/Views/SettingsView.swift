@@ -14,6 +14,7 @@ struct SettingsView: View {
             TerminalSettings().tabItem { Label("Terminal", systemImage: "terminal") }.tag("terminal")
             CLISettings().tabItem { Label("CLIs", systemImage: "person.2") }.tag("clis")
             NotificationSettings().tabItem { Label("Notifications", systemImage: "bell.badge") }.tag("notifications")
+            MemorySettings().tabItem { Label("Memory", systemImage: "brain") }.tag("memory")
             IntegrationSettings().tabItem { Label("Integrations", systemImage: "puzzlepiece.extension") }.tag("integrations")
             ShortcutSettings().tabItem { Label("Shortcuts", systemImage: "keyboard") }.tag("shortcuts")
         }
@@ -350,6 +351,106 @@ struct IntegrationSettings: View {
         .formStyle(.grouped)
         .frame(height: 360)
         .onAppear { status = AgentWorldSkill.status() }
+    }
+}
+
+// MARK: - Memory
+
+struct MemorySettings: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject private var preferences = Preferences.shared
+    @State private var status = MemoryMCP.status()
+    @State private var working = false
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Vault") {
+                    HStack {
+                        Text((preferences.memoryFolder as NSString).abbreviatingWithTildeInPath)
+                            .lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                        Button("Choose…", action: chooseFolder)
+                    }
+                }
+                LabeledContent("Notes") {
+                    HStack {
+                        Text("\(model.memoryNotes.count) in \(Set(model.memoryNotes.map(\.scope)).count) scopes").foregroundStyle(.secondary)
+                        Button("Open") { model.openNotes() }
+                        Button(Obsidian.isInstalled ? "Open in Obsidian" : "Obsidian not installed") {
+                            Obsidian.open(vault: URL(fileURLWithPath: preferences.memoryFolder, isDirectory: true))
+                        }
+                        .disabled(!Obsidian.isInstalled)
+                    }
+                }
+            } header: {
+                Text("Shared memory")
+            } footer: {
+                Text("Markdown notes every agent CLI reads and writes: one folder per project, plus global. It's also an Obsidian vault. Terminals opened after a change use the new folder.")
+                    .settingsFootnote()
+            }
+            Section {
+                Toggle("Give every CLI the memory as MCP tools", isOn: $preferences.connectsMemory)
+                    .onChange(of: preferences.connectsMemory) { on in
+                        if on { update { MemoryMCP.connectAll(claudeExecutable: $0) } }
+                    }
+                ForEach(status, id: \.target.provider.id) { entry in
+                    LabeledContent {
+                        HStack {
+                            Text(entry.connected ? "connected" : "not connected")
+                                .foregroundStyle(entry.connected ? Color.green : .secondary)
+                            Button(entry.connected ? "Remove" : "Connect") {
+                                let target = entry.target
+                                let connected = entry.connected
+                                update { claude in
+                                    if connected { MemoryMCP.disconnect(target, claudeExecutable: claude) }
+                                    else if let command = MemoryMCP.command { MemoryMCP.connect(target, command: command, claudeExecutable: claude) }
+                                }
+                            }
+                            .disabled(working)
+                        }
+                    } label: {
+                        Text(entry.target.provider.name)
+                        Text("~/" + entry.target.file).font(.caption.monospaced())
+                    }
+                }
+            } header: {
+                Text("Agents using it")
+            } footer: {
+                Text("Adds an MCP server named agentworld-memory (agentworld-ctl mcp) to each CLI's own config, so it gets memory_search, memory_read, memory_write… tools. Every CLI can also use agentworld-ctl memory from its shell, as the agentworld skill explains.")
+                    .settingsFootnote()
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 460)
+        .onAppear { status = MemoryMCP.status(); model.refreshMemory() }
+    }
+
+    /// Runs a change to the CLIs' configs off the main thread, then rereads their status.
+    private func update(_ change: @escaping @Sendable (String?) -> Void) {
+        working = true
+        let claude = model.executable(for: LaunchProfile(name: Provider.claude.name, provider: .claude))
+        Task.detached(priority: .userInitiated) {
+            change(claude)
+            await MainActor.run {
+                status = MemoryMCP.status()
+                working = false
+            }
+        }
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = URL(fileURLWithPath: preferences.memoryFolder)
+        panel.prompt = "Use as Vault"
+        panel.message = "Pick a folder for the shared memory (an existing Obsidian vault works too)."
+        if panel.runModal() == .OK, let url = panel.url {
+            preferences.memoryFolder = url.path
+            try? MemoryVault(root: url).prepare()
+            model.refreshMemory()
+        }
     }
 }
 

@@ -332,7 +332,7 @@ struct PaletteItem: Identifiable {
         case "workspace": .workspaces
         case "agent": .agents
         case "skill", "command": .skills
-        case "file": .files
+        case "file", "note": .files
         case "git", "diff": .git
         default: .actions
         }
@@ -426,6 +426,20 @@ struct PaletteItem: Identifiable {
         items.append(PaletteItem(id: "act:map", kind: "view", title: "Project map", subtitle: "every file as a dot, linked to the ones it uses",
                                  symbol: "point.3.connected.trianglepath.dotted", color: Palette.claude,
                                  keywords: "graph dependencies imports files structure architecture", weight: 2) { $0.openProjectMap() })
+        items.append(PaletteItem(id: "act:memory", kind: "view", title: "Memory", subtitle: "the notes every agent CLI shares, with links and a graph",
+                                 symbol: "brain", color: Palette.claude,
+                                 keywords: "notes obsidian vault knowledge remember wiki", weight: 2) { $0.openNotes() })
+        if Obsidian.isInstalled {
+            items.append(PaletteItem(id: "act:obsidian", kind: "app", title: "Open memory in Obsidian", subtitle: model.memoryVault.root.path,
+                                     symbol: "arrow.up.forward.app", keywords: "notes vault markdown", weight: 1) { model in
+                Obsidian.open(vault: model.memoryVault.root)
+            })
+        }
+        for note in model.workspaceMemory.prefix(40) {
+            items.append(PaletteItem(id: "note:\(note.id)", kind: "note", title: note.name, subtitle: note.description,
+                                     symbol: "note.text", color: note.isGlobal ? Palette.skill : Palette.agent,
+                                     keywords: "memory note " + note.tags.joined(separator: " "), weight: 2) { $0.openNotes(note.id) })
+        }
         items.append(PaletteItem(id: "act:settings", kind: "app", title: "Settings…", subtitle: "font, notifications, CLIs, profiles",
                                  symbol: "gearshape", keywords: "preferences options config", weight: 1) { $0.openSettings() })
         if let changes = model.changes[model.selectedFolder], !changes.files.isEmpty {

@@ -19,6 +19,11 @@ enum ControlServer {
         }
         atexit { unlink(ControlSocket.path()) }
         if Preferences.shared.installsSkill { AgentWorldSkill.install() }
+        // For agentworld-ctl run by a CLI outside the app (not a test run's scratch vault).
+        if ProcessInfo.processInfo.environment["AGENTWORLD_MEMORY"] == nil {
+            MemoryVault.saveConfigured(URL(fileURLWithPath: Preferences.shared.memoryFolder, isDirectory: true))
+        }
+        try? MemoryVault(root: URL(fileURLWithPath: Preferences.shared.memoryFolder, isDirectory: true)).prepare()
         let thread = Thread {
             while true {
                 let client = ControlSocket.accept(fd)
@@ -58,6 +63,9 @@ enum ControlServer {
       map file <path>                what a file uses and what uses it (its blast radius)
       map path <a> <b>               the chain of files linking two files
       map show [path]                open the project map for the user (on that file)
+      memory …                       the shared memory: notes every CLI reads and
+                                     writes (see `agentworld-ctl memory help`)
+      memory-show [name]             open the notes view for the user (on that note)
     """
 
     // MARK: - Commands
@@ -149,6 +157,18 @@ enum ControlServer {
 
         case "notify":
             model.notifier?.post(title: caller?.label ?? "AgentWorld", body: args.joined(separator: " "), session: caller)
+            return ok("")
+
+        case "memory-changed":
+            // From `agentworld-ctl memory` / `mcp`: [saved|deleted, scope/name].
+            guard args.count == 2 else { return fail("usage: memory-changed <saved|deleted> <scope/name>") }
+            model.memoryChanged(args[0], id: args[1], by: caller)
+            return ok("")
+
+        case "memory-show":
+            model.openNotes(args.first.flatMap { reference in
+                model.memoryVault.note(named: reference, preferring: MemoryVault.scope(for: caller?.folder ?? model.selectedFolder))?.id
+            })
             return ok("")
 
         case "map":

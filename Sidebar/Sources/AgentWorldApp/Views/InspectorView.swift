@@ -103,7 +103,7 @@ struct SectionBar: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text(section.title)
-                        // Five sections share 340 points: counts on the one you're in,
+                        // Six sections share 340 points: counts on the one you're in,
                         // or on all of them while searching, where they say where the matches are.
                         if selected || !panel.query.isEmpty, let count = count(section) {
                             Text("\(count)").font(.mono(9.5)).foregroundStyle(count == 0 && !panel.query.isEmpty ? Palette.faint.opacity(0.5) : Palette.faint)
@@ -112,7 +112,7 @@ struct SectionBar: View {
                     .font(.mono(11, selected ? .semibold : .regular))
                     .foregroundStyle(selected ? Palette.cream : Palette.muted)
                     .fixedSize()
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 4)
                     .padding(.vertical, 5)
                     .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selected : .clear))
                     .contentShape(Rectangle())
@@ -147,6 +147,7 @@ struct SectionBar: View {
         case .skills: return config.skills.count
         case .tools: return config.mcpServers.count + config.plugins.count + config.commands.count
         case .changes: return model.changes[model.selectedFolder]?.files.count
+        case .memory: return model.workspaceMemory.count
         case .tips: return nil
         }
     }
@@ -281,6 +282,8 @@ struct PanelRow: View {
             Text("/").font(.mono(16, .bold)).foregroundStyle(Palette.warning)
         case .change(let change):
             ChangeBadge(kind: change.kind)
+        case .note(let note):
+            Image(systemName: note.isGlobal ? "globe" : "note.text").foregroundStyle(note.isGlobal ? Palette.skill : Palette.agent)
         case .tip:
             Image(systemName: "sparkles").foregroundStyle(Palette.warning)
         }
@@ -294,6 +297,7 @@ struct PanelRow: View {
         case .plugin(let plugin): plugin.name
         case .command(let command): "/" + command.qualifiedName
         case .change(let change): change.name
+        case .note(let note): note.name
         case .tip(let tip):
             switch tip.kind {
             case .agent: "Use the \(tip.name) agent"
@@ -310,6 +314,7 @@ struct PanelRow: View {
         case .plugin: Palette.agent
         case .command, .tip: Palette.warning
         case .change(let change): change.kind == .deleted ? Palette.muted : Palette.cream
+        case .note: Palette.cream
         }
     }
 
@@ -322,6 +327,7 @@ struct PanelRow: View {
         case .command(let command): command.plugin ?? ""
         case .change(let change): [change.added.map { "+\($0)" }, change.removed.flatMap { $0 > 0 ? "−\($0)" : nil }]
             .compactMap { $0 }.joined(separator: " ")
+        case .note(let note): note.isGlobal ? "global" : ""
         case .tip: ""
         }
     }
@@ -339,6 +345,7 @@ struct PanelRow: View {
         case .command(let command): return command.description ?? "a slash command"
         case .change(let change):
             return (change.folder.isEmpty ? "" : change.folder + " · ") + change.kind.rawValue
+        case .note(let note): return note.description
         case .tip(let tip):
             switch tip.kind {
             case .agent: return config.agents.first { $0.qualifiedName == tip.name }?.description.map(SkillCategory.summarize) ?? ""
@@ -356,6 +363,9 @@ struct PanelRow: View {
         case .change(let change):
             let who = model.sessions(touching: change.path, in: model.selectedFolder).map(\.label)
             return who.isEmpty ? nil : "by " + who.joined(separator: ", ")
+        case .note(let note):
+            let who = note.agents.map { Provider.named($0)?.shortName ?? $0 }
+            return (who.isEmpty ? "" : "by " + who.joined(separator: ", ") + " · ") + note.updated.formatted(.relative(presentation: .named))
         default: return nil
         }
     }
@@ -381,6 +391,7 @@ struct PanelRow: View {
         case .tip: "Click to type it into the terminal."
         case .command: "Click to type it into the terminal."
         case .change: "Click (or ↩) for its diff; u types its path into the terminal; m shows it on the map."
+        case .note: "Click (or ↩) to read it; u mentions it in the terminal; o opens it in Obsidian."
         case .server: "An MCP server: tools from another service the CLI can call."
         case .plugin: "A plugin: a bundle of skills, agents, commands or servers."
         }
@@ -405,6 +416,7 @@ struct EmptySection: View {
         case .skills: "No skills yet. \"+ New\" describes one and \(provider.shortName) writes it."
         case .tools: "No MCP servers, plugins or commands for \(provider.shortName) here."
         case .changes: "No uncommitted changes. What your agents edit shows up here, with who did it."
+        case .memory: "No notes yet. Agents write what they learn here (agentworld-ctl memory, or its MCP tools); every CLI reads it."
         case .tips: "Tips show up as you work: they follow what you ask."
         }
     }

@@ -12,7 +12,7 @@ enum AgentWorldSkill {
     static let text = """
     ---
     name: agentworld
-    description: Drive the AgentWorld app you are running inside — open other agent CLIs (Claude, Codex, Gemini…) in panes beside you, hand them tasks, wait for them, read their answers, and talk to the user through your on-screen character. Use when $AGENTWORLD_SOCKET is set and the user asks for a second opinion, a reviewer, parallel work, or to compare CLIs; or to leave the user a short status line or notification during long work; also to see a project's structure cheaply (clusters, hubs, what depends on a file) with agentworld-ctl map.
+    description: Drive the AgentWorld app you are running inside — open other agent CLIs (Claude, Codex, Gemini…) in panes beside you, hand them tasks, wait for them, read their answers, and talk to the user through your on-screen character. Use when $AGENTWORLD_SOCKET is set and the user asks for a second opinion, a reviewer, parallel work, or to compare CLIs; or to leave the user a short status line or notification during long work; also to see a project's structure cheaply (clusters, hubs, what depends on a file) with agentworld-ctl map; and to search, read and write the shared memory every CLI uses (agentworld-ctl memory) before starting a task and when you learn something worth keeping.
     ---
 
     # AgentWorld
@@ -50,6 +50,36 @@ enum AgentWorldSkill {
     which files cluster together and which are hubs; `map file <path>` lists
     what depends on a file before you change it; `map path a b` shows how
     two parts connect. `map show <path>` puts the map on the user's screen.
+
+    ## Shared memory
+
+    Notes every agent CLI here reads and writes: Markdown in a vault the user
+    also browses (in the app with ⌘⇧O, or in Obsidian). They belong to this
+    project or are global (about the user, for every project). This works
+    even outside AgentWorld. If you have the `agentworld-memory` MCP tools
+    (memory_search, memory_write…), use those; otherwise:
+
+    ```sh
+    agentworld-ctl memory                          # this project's notes + global ones
+    agentworld-ctl memory search deploy staging    # notes with all these words
+    agentworld-ctl memory read deploy              # one note
+    agentworld-ctl memory write deploy --description "How to deploy" --tags ops <<'EOF'
+    Deploy with `make release`; staging first. See [[release-checklist]].
+    EOF
+    agentworld-ctl memory write deploy --append "Staging needs VPN since 2026-09."
+    agentworld-ctl memory write prefers-short-answers --global "The user wants terse replies."
+    agentworld-ctl memory delete old-note          # wrong or no longer true
+    agentworld-ctl memory-show deploy              # show the user that note
+    ```
+
+    - **Before** non-trivial work, search for the topic: another agent (maybe
+      another CLI) may already know how to run, test or deploy this project.
+    - **Write** when you learn what a future agent would need: a decision and
+      why, how to build/test/run, a gotcha, a user preference. One fact or
+      topic per note, a short-kebab-case name, a one-line description.
+    - Update (`--append`, or rewrite) instead of adding near-copies; delete
+      notes that turn out wrong. Link related notes with `[[name]]`.
+    - Never store secrets, or what the code or git history already records.
 
     ## Handing work to another pane
 

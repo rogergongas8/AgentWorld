@@ -98,6 +98,11 @@ final class AppModel: ObservableObject {
     var mapBuilding = false
     /// Each workspace's files, for ⌘K and the project map.
     @Published var projectFiles: [String: (files: [String], at: Date)] = [:]
+    /// The shared memory's notes (every scope), the notes view and its open note.
+    @Published var memoryNotes: [MemoryNote] = []
+    var memoryInFlight = false
+    @Published var showsNotes = false
+    @Published var openNoteID: String?
     /// The change whose diff is open over the window.
     @Published var openChange: OpenChange?
     private var ticks = 0
@@ -141,6 +146,10 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 self.installed = [:]
                 self.environmentReady = true
+                // Not from scripted test runs: they mustn't touch your CLIs' configs.
+                if Preferences.shared.connectsMemory, ProcessInfo.processInfo.environment["AGENTWORLD_DEBUG_CONTROL"] == nil {
+                    self.connectMemoryEverywhere()
+                }
             }
         }
         installKeyRouter()
@@ -170,6 +179,8 @@ final class AppModel: ObservableObject {
         if ticks % 20 == 0 { saveWorkspaces() }
         if ticks % 60 == 1 { refreshGit() }
         if ticks % 60 == 3 { refreshUsage() }
+        // Notes edited by hand (in Obsidian, say) show up within a few seconds.
+        if ticks % 6 == 5 { refreshMemory() }
         // The workspace on screen every 2 s, and any other where agents work.
         if ticks % 4 == 0 {
             refreshChanges(selectedFolder)

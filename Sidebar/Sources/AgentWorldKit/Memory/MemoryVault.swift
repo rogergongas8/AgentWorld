@@ -323,10 +323,19 @@ public struct MemoryVault: Sendable {
         return lines.joined(separator: "\n")
     }
 
+    /// The description a note gets when none is given: its first line.
+    public static func firstLine(of body: String) -> String { summary(of: body) }
+
     /// The first line of text, without Markdown marks, as a description.
     static func summary(of body: String) -> String {
         let line = body.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? ""
-        let plain = line.trimmingCharacters(in: CharacterSet(charactersIn: "#>-*• ")).replacingOccurrences(of: "**", with: "")
+        var plain = line.trimmingCharacters(in: CharacterSet(charactersIn: "#>-*• ")).replacingOccurrences(of: "**", with: "")
+        // [[name|label]] reads as "label", [[name]] as "name".
+        while let open = plain.range(of: "[["), let close = plain[open.upperBound...].range(of: "]]") {
+            let inner = plain[open.upperBound..<close.lowerBound]
+            let label = inner.split(separator: "|", maxSplits: 1).last.map(String.init) ?? String(inner)
+            plain.replaceSubrange(open.lowerBound..<close.upperBound, with: label)
+        }
         return plain.count > 120 ? String(plain.prefix(117)) + "…" : plain
     }
 

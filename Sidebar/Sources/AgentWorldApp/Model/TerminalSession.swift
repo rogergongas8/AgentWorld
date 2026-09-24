@@ -120,7 +120,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
             let command = ([executable] + arguments).map(ShellEnvironment.quote).joined(separator: " ")
             args = ["-l", "-i", "-c", "exec " + command]
         }
-        let control = ["AGENTWORLD_PANE": "\(number)", "AGENTWORLD_SOCKET": ControlServer.socketPath]
+        // Who writes to the shared memory from here, and where it lives.
+        let control = ["AGENTWORLD_PANE": "\(number)", "AGENTWORLD_SOCKET": ControlServer.socketPath,
+                       "AGENTWORLD_AGENT": profile.provider.isAgent ? profile.provider.id : "you",
+                       "AGENTWORLD_MEMORY": Preferences.shared.memoryFolder]
         terminal.startProcess(executable: shell, args: args, environment: ShellEnvironment.forTerminal(extra: control),
                               execName: "-" + URL(fileURLWithPath: shell).lastPathComponent, currentDirectory: folder)
 

@@ -86,6 +86,9 @@ struct TabStrip: View {
                 ChromeButton(symbol: "point.3.connected.trianglepath.dotted", active: model.showsMap, help: "Map of the project: files and how they connect (⌘⇧M)") {
                     if model.showsMap { model.showsMap = false } else { model.openProjectMap() }
                 }
+                ChromeButton(symbol: "brain", active: model.showsNotes, help: "Memory: the notes your agents share (⌘⇧O)") {
+                    if model.showsNotes { model.showsNotes = false } else { model.openNotes() }
+                }
                 UsageButton()
                 RunningSummary().padding(.trailing, 6)
                 ChromeButton(symbol: "sidebar.right", active: model.showsInspector, help: "Show or hide agents, skills and tips (⌥⌘I)") {

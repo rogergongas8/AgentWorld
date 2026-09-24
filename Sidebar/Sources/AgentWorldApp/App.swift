@@ -63,6 +63,8 @@ struct AgentWorldApp: App {
                 Divider()
                 Button("Project Map") { if model.showsMap { model.showsMap = false } else { model.openProjectMap() } }
                     .keyboardShortcut("m", modifiers: [.command, .shift])
+                Button("Memory") { if model.showsNotes { model.showsNotes = false } else { model.openNotes() } }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
                 Button("Commit Changes…") { model.showsCommit = true }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                     .disabled(model.changes[model.selectedFolder]?.files.isEmpty != false)

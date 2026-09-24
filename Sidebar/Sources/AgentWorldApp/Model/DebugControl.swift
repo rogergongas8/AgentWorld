@@ -38,6 +38,16 @@ enum DebugControl {
                     try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: argument))
                 }
             case "map": model.openProjectMap()
+            case "notes": model.openNotes(argument.isEmpty ? nil : argument)
+            case "notes-graph":
+                UserDefaults.standard.set(argument == "off" ? "note" : "graph", forKey: "notesMode")
+                model.openNotes()
+            case "notes-close": model.showsNotes = false
+            case "panel-section":
+                if let section = PanelNavigator.Section.allCases.first(where: { $0.title.lowercased() == argument.lowercased() }) {
+                    model.showsInspector = true
+                    model.panel.section = section
+                }
             case "map-symbols": model.buildProjectMap(model.selectedFolder, symbols: argument != "off")
             case "map-select": model.mapFocus = argument
             case "palette":
