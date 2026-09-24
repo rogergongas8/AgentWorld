@@ -64,11 +64,30 @@ import Testing
         try "# Mine\n\n## Gemini Added Memories\n- Prefers tabs\n- Lives in Barcelona\n"
             .write(to: home.appendingPathComponent(".gemini/GEMINI.md"), atomically: true, encoding: .utf8)
         let notes = NativeMemories.notes(forFolder: folder, home: home)
-        #expect(notes.map(\.id).sorted() == ["claude:proj/user-favorite-number", "gemini:global/gemini-memories"])
+        #expect(notes.map(\.id).sorted() == ["claude:proj/user-favorite-number", "gemini:global/lives-in-barcelona", "gemini:global/prefers-tabs"])
         #expect(notes.first { $0.source == "claude" }?.description == "The user's favorite number is 6.")
         #expect(notes.first { $0.source == "claude" }?.kind == "preference")
-        #expect(notes.first { $0.source == "gemini" }?.body == "- Prefers tabs\n- Lives in Barcelona")
         #expect(MemoryVault.rank(notes, by: "número favorito").first?.source == "claude")
+
+        // Edited in place: Claude's header stays, Gemini's line changes, the rest of GEMINI.md too.
+        let claude = try #require(notes.first { $0.source == "claude" })
+        try NativeMemories.update(claude, body: "It's 7 now.", description: "The user's favorite number is 7.")
+        let file = try String(contentsOf: claude.url, encoding: .utf8)
+        #expect(file.contains("name: user-favorite-number") && file.contains("type: user"))
+        #expect(file.contains("description: \"The user's favorite number is 7.\"") && file.hasSuffix("It's 7 now.\n"))
+        let gemini = NativeMemories.notes(forFolder: folder, home: home).filter { $0.source == "gemini" }
+        #expect(gemini.map(\.body) == ["Prefers tabs", "Lives in Barcelona"])
+        try NativeMemories.update(gemini[0], body: "Prefers spaces")
+        try NativeMemories.delete(gemini[1])
+        let geminiFile = try String(contentsOf: home.appendingPathComponent(".gemini/GEMINI.md"), encoding: .utf8)
+        #expect(geminiFile == "# Mine\n\n## Gemini Added Memories\n- Prefers spaces\n")
+        // Deleting Claude's memory also drops its line from MEMORY.md.
+        try "- [Favorite](user_favorite_number.md) — 6\n- [Other](other.md) — x\n"
+            .write(to: memory.appendingPathComponent("MEMORY.md"), atomically: true, encoding: .utf8)
+        let commands = MemoryCommands(vault: MemoryVault(root: home.appendingPathComponent("vault")), folder: folder, agent: "kiro", home: home)
+        #expect(commands.run(["delete", "claude:user-favorite-number"], stdin: { nil }).ok)
+        #expect(!FileManager.default.fileExists(atPath: claude.url.path))
+        #expect(try String(contentsOf: memory.appendingPathComponent("MEMORY.md"), encoding: .utf8) == "- [Other](other.md) — x\n")
     }
 
     @Test func readFallsBackToGlobalThenAnywhere() throws {

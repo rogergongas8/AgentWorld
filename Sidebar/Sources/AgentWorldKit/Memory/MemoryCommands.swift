@@ -11,11 +11,12 @@ public struct MemoryCommands {
     /// What the CLIs remember on their own for this folder (read-only).
     let native: [MemoryNote]
 
-    public init(vault: MemoryVault, folder: String, agent: String?, includesNative: Bool = true) {
+    public init(vault: MemoryVault, folder: String, agent: String?, includesNative: Bool = true,
+                home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         self.vault = vault
         self.project = MemoryVault.scope(for: folder)
         self.agent = agent
-        self.native = includesNative ? NativeMemories.notes(forFolder: folder) : []
+        self.native = includesNative ? NativeMemories.notes(forFolder: folder, home: home) : []
     }
 
     private func native(in scopes: [String]?) -> [MemoryNote] {
@@ -86,8 +87,7 @@ public struct MemoryCommands {
     }
 
     public func read(_ name: String) -> Result {
-        let own = native.first { $0.id == name || $0.name == MemoryVault.slug(name) || "\($0.source ?? ""):\($0.name)" == name }
-        guard let note = vault.note(named: name, preferring: project) ?? own else {
+        guard let note = vault.note(named: name, preferring: project) ?? nativeNote(name) else {
             let near = vault.search(name.replacingOccurrences(of: "-", with: " "), in: nil).prefix(5).map(\.id)
             return Result(ok: false, output: "No note called \(name)." + (near.isEmpty ? "" : " Close: " + near.joined(separator: ", ")))
         }
@@ -99,13 +99,30 @@ public struct MemoryCommands {
         facts.append("updated " + Self.relative(note.updated))
         if let kind = note.kind { facts.append(kind) }
         if !note.tags.isEmpty { facts.append("tags: " + note.tags.joined(separator: ", ")) }
-        if let source = note.source { facts.append("from \(source)'s own memory, read-only: copy it into the shared memory to change it") }
+        if let source = note.source { facts.append("in \(source)'s own memory: write or delete it as \(source):\(note.name)") }
         header += "(" + facts.joined(separator: " · ") + ")\n\n"
         return Result(ok: true, output: header + note.body)
     }
 
+    /// A CLI's own memory by `claude:name`, `gemini:name` or its full id.
+    private func nativeNote(_ reference: String) -> MemoryNote? {
+        native.first { $0.id == reference || "\($0.source ?? ""):\($0.name)" == reference }
+            ?? native.first { $0.name == MemoryVault.slug(reference) }
+    }
+
     public func write(name: String, body: String, global: Bool = false, description: String? = nil,
                       kind: String? = nil, tags: [String] = [], append: Bool = false) -> Result {
+        // `claude:…` / `gemini:…`: that CLI's own memory, rewritten in place.
+        if name.hasPrefix("claude:") || name.hasPrefix("gemini:") {
+            guard let note = nativeNote(name) else { return Result(ok: false, output: "No memory called \(name).") }
+            do {
+                let text = append ? note.body + "\n\n" + body : body
+                let saved = try NativeMemories.update(note, body: text, description: description)
+                return Result(ok: true, output: "updated \(saved.id) — \(saved.description)", changed: saved)
+            } catch {
+                return Result(ok: false, output: "\(error)")
+            }
+        }
         if let kind, MemoryVault.kind(kind) == nil {
             return Result(ok: false, output: "unknown kind \(kind): use " + MemoryVault.kinds.map(\.id).joined(separator: ", "))
         }
@@ -122,6 +139,15 @@ public struct MemoryCommands {
     }
 
     public func delete(_ name: String) -> Result {
+        if name.hasPrefix("claude:") || name.hasPrefix("gemini:") {
+            guard let note = nativeNote(name) else { return Result(ok: false, output: "No memory called \(name).") }
+            do {
+                try NativeMemories.delete(note)
+                return Result(ok: true, output: "deleted \(note.id)", changed: note)
+            } catch {
+                return Result(ok: false, output: "\(error)")
+            }
+        }
         do {
             let note = try vault.delete(name: name, preferring: project)
             return Result(ok: true, output: "deleted \(note.id)", changed: note)

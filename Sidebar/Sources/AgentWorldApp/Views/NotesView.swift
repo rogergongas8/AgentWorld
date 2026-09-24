@@ -238,13 +238,13 @@ struct NotesView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(note.name).font(.mono(18, .bold)).foregroundStyle(Palette.cream).textSelection(.enabled)
                     Spacer()
-                    if note.isReadOnly {
-                        Text("\(Provider.named(note.source ?? "")?.name ?? note.source ?? "")'s own memory · read-only")
+                    if let source = note.source {
+                        Text("in \(Provider.named(source)?.name ?? source)'s own memory")
                             .font(.mono(10.5)).foregroundStyle(Palette.muted)
-                    } else {
-                        Button { startEditing(note) } label: { Label("Edit", systemImage: "pencil") }
-                            .buttonStyle(.borderless).font(.mono(11))
+                            .help("Kept by \(Provider.named(source)?.name ?? source) in its own format; edits and deletes go to its file")
                     }
+                    Button { startEditing(note) } label: { Label("Edit", systemImage: "pencil") }
+                        .buttonStyle(.borderless).font(.mono(11))
                 }
                 if MemoryVault.firstLine(of: note.description) != MemoryVault.firstLine(of: note.body) {
                     Text(note.description).font(.mono(12)).foregroundStyle(Palette.muted).textSelection(.enabled)
@@ -281,18 +281,26 @@ struct NotesView: View {
                 Button("Save") { save() }.keyboardShortcut("s", modifiers: .command)
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            Picker("Kind", selection: $draftKind) {
-                Text("No kind").tag("")
-                ForEach(MemoryVault.kinds, id: \.id) { kind in Text(kind.title + " — " + kind.meaning).tag(kind.id) }
-            }
-            .font(.mono(11.5))
-            .frame(maxWidth: 420, alignment: .leading)
-            TextField("One line: what this note is about (optional)", text: $draftDescription)
-                .textFieldStyle(.plain)
+            let native = creating == nil ? selectedNote?.source : nil
+            if native == nil {
+                Picker("Kind", selection: $draftKind) {
+                    Text("No kind").tag("")
+                    ForEach(MemoryVault.kinds, id: \.id) { kind in Text(kind.title + " — " + kind.meaning).tag(kind.id) }
+                }
                 .font(.mono(11.5))
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Palette.panel))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.border))
+                .frame(maxWidth: 420, alignment: .leading)
+            } else {
+                Text("In \(Provider.named(native!)?.name ?? native!)'s own memory: saved to its file, in its format.")
+                    .font(.mono(10.5)).foregroundStyle(Palette.muted)
+            }
+            if native != "gemini" {
+                TextField("One line: what this note is about (optional)", text: $draftDescription)
+                    .textFieldStyle(.plain)
+                    .font(.mono(11.5))
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Palette.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.border))
+            }
             TextEditor(text: $draft)
                 .font(.mono(12.5))
                 .scrollContentBackground(.hidden)
@@ -331,6 +339,18 @@ struct NotesView: View {
     }
 
     private func save() {
+        if creating == nil, let note = selectedNote, note.isNative {
+            do {
+                let saved = try NativeMemories.update(note, body: draft, description: draftDescription.isEmpty ? nil : draftDescription)
+                editing = false
+                message = nil
+                model.openNoteID = saved.id
+                model.refreshMemory()
+            } catch {
+                message = "\(error)"
+            }
+            return
+        }
         let target = creating ?? selectedNote.map { ($0.name, $0.scope) }
         guard let (name, scope) = target else { return }
         do {
@@ -400,21 +420,16 @@ struct NotesView: View {
                     if mode == "graph" {
                         Button { mode = "note" } label: { Label("Read it", systemImage: "doc.text") }
                     }
-                    if note.isReadOnly {
-                        Button { copyToShared(note) } label: { Label("Copy into the shared memory", systemImage: "square.and.arrow.down.on.square") }
-                    } else {
-                        Button { startEditing(note); mode = "note" } label: { Label("Edit", systemImage: "pencil") }
-                    }
+                    Button { startEditing(note); mode = "note" } label: { Label("Edit", systemImage: "pencil") }
+                    // A CLI's own memory lives outside the vault, where Obsidian doesn't look.
                     Button { openInObsidian(note) } label: { Label("Open in Obsidian", systemImage: "arrow.up.forward.app") }
-                        .disabled(!Obsidian.isInstalled || note.isReadOnly)
+                        .disabled(!Obsidian.isInstalled || note.isNative)
                     Button { NSWorkspace.shared.activateFileViewerSelecting([note.url]) } label: {
                         Label("Show in Finder", systemImage: "folder")
                     }
-                    if !note.isReadOnly {
-                        Button { delete(note) } label: {
-                            Label(confirmDelete ? "Click again to delete" : "Delete", systemImage: "trash")
-                                .foregroundStyle(confirmDelete ? Palette.error : Palette.text)
-                        }
+                    Button { delete(note) } label: {
+                        Label(confirmDelete ? "Click again to delete" : "Delete", systemImage: "trash")
+                            .foregroundStyle(confirmDelete ? Palette.error : Palette.text)
                     }
                 }
                 .buttonStyle(.borderless)
@@ -446,22 +461,15 @@ struct NotesView: View {
         .help(note.description)
     }
 
-    /// A CLI's own memory into the vault, where every CLI reads and edits it.
-    private func copyToShared(_ note: MemoryNote) {
-        do {
-            let copy = try model.memoryVault.write(name: note.name, body: note.body, scope: note.scope, description: note.description,
-                                                   kind: note.kind, tags: note.tags, agent: note.agents.first)
-            model.openNoteID = copy.id
-            model.refreshMemory()
-        } catch {
-            message = "\(error)"
-        }
-    }
-
     private func delete(_ note: MemoryNote) {
         guard confirmDelete else { confirmDelete = true; return }
         confirmDelete = false
-        _ = try? model.memoryVault.delete(name: note.id)
+        do {
+            if note.isNative { try NativeMemories.delete(note) } else { _ = try model.memoryVault.delete(name: note.id) }
+        } catch {
+            message = "\(error)"
+            return
+        }
         model.openNoteID = shown.first { $0.id != note.id }?.id
         model.refreshMemory()
     }

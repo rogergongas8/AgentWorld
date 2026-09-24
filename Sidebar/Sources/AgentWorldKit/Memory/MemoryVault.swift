@@ -18,11 +18,14 @@ public struct MemoryNote: Identifiable, Hashable, Sendable {
     public var body: String
     public var url: URL
     /// Nil for the shared vault's notes; "claude" or "gemini" for what that
-    /// CLI remembers on its own (read-only, see `NativeMemories`).
+    /// CLI remembers on its own (edited in place, see `NativeMemories`).
     public var source: String? = nil
+    /// For a Gemini memory: its line in GEMINI.md, to edit or remove it.
+    public var nativeLine: String? = nil
 
     public var id: String { (source.map { $0 + ":" } ?? "") + scope + "/" + name }
-    public var isReadOnly: Bool { source != nil }
+    /// Kept by a CLI in its own format rather than in the vault.
+    public var isNative: Bool { source != nil }
     public var isGlobal: Bool { scope == MemoryVault.globalScope }
 
     /// The notes it links to with `[[wikilinks]]` (Obsidian's syntax).
