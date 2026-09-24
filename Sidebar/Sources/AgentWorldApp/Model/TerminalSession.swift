@@ -47,6 +47,14 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         let at: Date
     }
 
+    /// What the agent said it's working on (`agentworld-ctl doing`), for the board.
+    @Published var doing: String?
+    /// Your last keystroke in it: messages from other agents wait while you type.
+    var lastKeyAt = Date.distantPast
+    /// The last time messages were typed into it, to space them out.
+    var lastDeliveryAt = Date.distantPast
+    var hasCodexTranscript: Bool { codex?.isFollowing == true }
+
     /// The pane that opened this one with `agentworld-ctl open`: its lead.
     weak var openedBy: TerminalSession?
     /// When it last finished a stretch of work (busy → your turn or ended),

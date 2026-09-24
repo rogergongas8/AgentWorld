@@ -12,7 +12,7 @@ enum AgentWorldSkill {
     static let text = """
     ---
     name: agentworld
-    description: Drive the AgentWorld app you are running inside — open other agent CLIs (Claude, Codex, Gemini…) in panes beside you, hand them tasks, wait for them, read their answers, and talk to the user through your on-screen character. Use when $AGENTWORLD_SOCKET is set and the user asks for a second opinion, a reviewer, parallel work, or to compare CLIs; or to leave the user a short status line or notification during long work; also to see a project's structure cheaply (clusters, hubs, what depends on a file) with agentworld-ctl map; and to search, read and write the shared memory every CLI uses (agentworld-ctl memory) before starting a task and when you learn something worth keeping.
+    description: Drive the AgentWorld app you are running inside — open other agent CLIs (Claude, Codex, Gemini…) in panes beside you, hand them tasks, wait for them, read their answers, and talk to the user through your on-screen character. Use when $AGENTWORLD_SOCKET is set and the user asks for a second opinion, a reviewer, parallel work, or to compare CLIs; or to leave the user a short status line or notification during long work; to coordinate with the other agents working in the same project (who's doing what, which files, messages between agents); also to see a project's structure cheaply (clusters, hubs, what depends on a file) with agentworld-ctl map; and to search, read and write the shared memory every CLI uses (agentworld-ctl memory) before starting a task and when you learn something worth keeping.
     ---
 
     # AgentWorld
@@ -81,6 +81,26 @@ enum AgentWorldSkill {
     - Update (`--append`, or rewrite) instead of adding near-copies; delete
       notes that turn out wrong. Link related notes with `[[name]]`.
     - Never store secrets, or what the code or git history already records.
+
+    ## Working alongside other agents
+
+    Several agents (any CLI) may work in the same project at once. Stay out of
+    each other's way without chatting:
+
+    ```sh
+    agentworld-ctl board                     # who's here, doing what, which files they edited
+    agentworld-ctl doing "Refactoring the parser in src/parse/"   # tell them what you're on
+    agentworld-ctl message '#3' "I changed parse() to return a Result; update callers"
+    agentworld-ctl message all "Don't touch db/migrations, I'm reordering them"
+    agentworld-ctl inbox                     # messages waiting for you
+    ```
+
+    - At the start of a task, check the board if others are open, and set `doing`.
+    - Before editing a file another agent edited, message it first.
+    - Messages arrive in your prompt as "[AgentWorld · message from…]" when
+      your turn is over. Act on them; reply only if it's needed, briefly.
+    - AgentWorld warns both of you when two agents edit the same file.
+    - The MCP tools team_board, team_doing, team_message and team_inbox do the same.
 
     ## Handing work to another pane
 

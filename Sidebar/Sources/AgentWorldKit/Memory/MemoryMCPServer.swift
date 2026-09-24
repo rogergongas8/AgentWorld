@@ -12,17 +12,23 @@ public final class MemoryMCPServer {
     private var agent: String?
     /// Called after a note is written or deleted (the app is told, when it's up).
     private let onChange: (MemoryNote, String) -> Void
+    /// Asks the AgentWorld app a `agentworld-ctl` command (the team tools);
+    /// nil when the CLI isn't running inside the app.
+    private let ask: ((String, [String]) -> MemoryCommands.Result?)?
 
-    public init(vault: MemoryVault, folder: String, agent: String?, onChange: @escaping (MemoryNote, String) -> Void = { _, _ in }) {
+    public init(vault: MemoryVault, folder: String, agent: String?, onChange: @escaping (MemoryNote, String) -> Void = { _, _ in },
+                ask: ((String, [String]) -> MemoryCommands.Result?)? = nil) {
         self.vault = vault
         self.folder = folder
         self.agent = agent
         self.onChange = onChange
+        self.ask = ask
     }
 
     static let instructions = """
     A memory shared by every agent CLI the user runs (Claude Code, Codex, Gemini…), \
-    kept as Markdown notes the user also reads in Obsidian. Notes belong to the \
+    kept as Markdown notes the user also reads in Obsidian. Inside AgentWorld, the team_* \
+    tools show the other agents working in the same project and let you message them. Notes belong to the \
     current project or are global (about the user, for every project). \
     Before starting non-trivial work, memory_search for the topic: another agent may \
     already know the answer. When you learn something a future agent would need \
@@ -103,6 +109,15 @@ public final class MemoryMCPServer {
                                      tags: tags, append: arguments["append"] as? Bool ?? false)
         case "memory_delete":
             outcome = commands.delete(string("name") ?? "")
+        case "team_board", "team_doing", "team_message", "team_inbox":
+            let request: (String, [String]) = switch tool {
+            case "team_board": ("board", arguments["all"] as? Bool == true ? ["--all"] : [])
+            case "team_doing": ("doing", [string("text") ?? "-"])
+            case "team_message": ("message", [string("to") ?? "", string("text") ?? ""])
+            default: ("inbox", [])
+            }
+            return ask?(request.0, request.1)
+                ?? MemoryCommands.Result(ok: false, output: "Not running inside AgentWorld: there are no other agents to coordinate with.")
         default:
             return MemoryCommands.Result(ok: false, output: "unknown tool \(tool)")
         }
@@ -155,6 +170,26 @@ public final class MemoryMCPServer {
             "name": "memory_delete",
             "description": "Delete a note of the shared memory that is wrong or no longer true.",
             "inputSchema": ["type": "object", "properties": ["name": ["type": "string"]], "required": ["name"]],
+        ],
+        [
+            "name": "team_board",
+            "description": "The other agents working in this project right now (any CLI): status, what each is doing, the files each edited, and messages waiting for you. Check it before editing files others may be working on.",
+            "inputSchema": ["type": "object", "properties": ["all": ["type": "boolean", "description": "every workspace, not just this one"]]],
+        ],
+        [
+            "name": "team_doing",
+            "description": "Tell the other agents what you're working on now (one line; \"-\" clears it).",
+            "inputSchema": ["type": "object", "properties": ["text": ["type": "string"]], "required": ["text"]],
+        ],
+        [
+            "name": "team_message",
+            "description": "Send a short message to another agent (\"#3\") or to all of them here (\"all\"). It's handed over when its turn is over. Use it to coordinate (\"I'm changing the API in x.ts\"), not to chat.",
+            "inputSchema": ["type": "object", "properties": ["to": ["type": "string"], "text": ["type": "string"]], "required": ["to", "text"]],
+        ],
+        [
+            "name": "team_inbox",
+            "description": "Messages other agents sent you that haven't reached you yet.",
+            "inputSchema": ["type": "object", "properties": [:] as [String: Any]],
         ],
     ] }
 

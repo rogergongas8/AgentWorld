@@ -20,6 +20,12 @@ public struct MemoryCommands {
         public var output: String
         /// The note written or deleted, to tell the app.
         public var changed: MemoryNote?
+
+        public init(ok: Bool, output: String, changed: MemoryNote? = nil) {
+            self.ok = ok
+            self.output = output
+            self.changed = changed
+        }
     }
 
     public static let help = """

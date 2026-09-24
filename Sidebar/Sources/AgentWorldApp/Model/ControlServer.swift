@@ -33,7 +33,7 @@ enum ControlServer {
                     continue
                 }
                 Task { @MainActor [weak model] in
-                    let reply = if let model { await handle(request, model: model) } else { ControlReply(ok: false, output: "closing") }
+                    let reply = if let model { withMail(await handle(request, model: model), request, model) } else { ControlReply(ok: false, output: "closing") }
                     DispatchQueue.global().async { ControlSocket.reply(reply, to: client) }
                 }
             }
@@ -56,6 +56,12 @@ enum ControlServer {
       read <#n> [lines]              the last lines on #n's screen (default 60)
       focus <#n>                     show #n to the user
       close <#n>                     close pane #n
+      board [--all]                  the agents in your workspace: status, what each is
+                                     doing, the files each edited, waiting messages
+      doing <text…>                  tell the others what you're working on ("-" clears)
+      message <#n|all> <text…>       a message to another agent (or all of them here),
+                                     handed over when its turn is over
+      inbox                          messages waiting for you
       say <text…>                    show a line on your character's stage
       notify <text…>                 macOS notification for the user
       map                            the project's structure: clusters of files
@@ -67,6 +73,16 @@ enum ControlServer {
                                      writes (see `agentworld-ctl memory help`)
       memory-show [name]             open the notes view for the user (on that note)
     """
+
+    /// Every reply mentions messages waiting for the caller, so an agent
+    /// that can't be typed into (no transcript) still hears about them.
+    private static func withMail(_ reply: ControlReply, _ request: ControlRequest, _ model: AppModel) -> ControlReply {
+        guard !["inbox", "memory-changed"].contains(request.command),
+              let caller = request.caller.flatMap({ number in model.allSessions.first { $0.number == number } }),
+              let waiting = model.inboxes[caller.id], !waiting.isEmpty else { return reply }
+        let note = "\n\n📬 \(waiting.count) message\(waiting.count == 1 ? "" : "s") from other agents: run `agentworld-ctl inbox`."
+        return ControlReply(ok: reply.ok, output: reply.output + note)
+    }
 
     // MARK: - Commands
 
@@ -158,6 +174,40 @@ enum ControlServer {
         case "notify":
             model.notifier?.post(title: caller?.label ?? "AgentWorld", body: args.joined(separator: " "), session: caller)
             return ok("")
+
+        case "board":
+            // Who's doing what in your workspace (or every one with --all).
+            let folders = args.contains("--all") ? Array(Set(model.allSessions.map(\.folder))).sorted() : [caller?.folder ?? model.selectedFolder]
+            return ok(folders.map { folder in
+                (folders.count > 1 ? "\(model.workspaceName(folder)):\n" : "") + model.boardText(for: folder, caller: caller)
+            }.joined(separator: "\n\n"))
+
+        case "doing":
+            guard let caller else { return fail("doing only works from an AgentWorld terminal") }
+            let text = args.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+            caller.doing = text.isEmpty || text == "-" ? nil : String(text.prefix(140))
+            return ok("")
+
+        case "message", "msg":
+            guard args.count >= 2 else { return fail("usage: message <#n|all> <text…>") }
+            let targets: [TerminalSession]
+            if args[0] == "all" {
+                targets = model.allSessions.filter { $0.folder == (caller?.folder ?? model.selectedFolder) && $0.provider.isAgent && $0 !== caller }
+            } else if let target = pane(args[0]) {
+                targets = [target]
+            } else {
+                return fail("no pane \(args[0]) — see `agentworld-ctl board`")
+            }
+            guard !targets.isEmpty else { return fail("no other agents here") }
+            guard targets.allSatisfy(\.provider.isAgent) else { return fail("\(args[0]) is a plain terminal, not an agent") }
+            if let problem = model.sendMessage(args.dropFirst().joined(separator: " "), from: caller, to: targets) { return fail(problem) }
+            let waiting = targets.filter { !(model.inboxes[$0.id]?.isEmpty ?? true) }.map { "#\($0.number)" }
+            return ok(waiting.isEmpty ? "delivered" : "queued for \(waiting.joined(separator: " ")): handed over when its turn is over")
+
+        case "inbox":
+            guard let caller else { return fail("inbox only works from an AgentWorld terminal") }
+            let messages = model.takeInbox(caller)
+            return ok(messages.isEmpty ? "no messages" : AppModel.format(messages))
 
         case "memory-changed":
             // From `agentworld-ctl memory` / `mcp`: [saved|deleted, scope/name].

@@ -29,7 +29,14 @@ func tellApp(_ note: MemoryNote, _ action: String) {
 let agent = environment["AGENTWORLD_AGENT"].flatMap { $0.isEmpty ? nil : $0 }
 let folder = FileManager.default.currentDirectoryPath
 if command == "mcp" {
-    MemoryMCPServer(vault: .configured(), folder: folder, agent: agent, onChange: tellApp).run()
+    // The team tools go to the app, as this pane (when the CLI runs inside it).
+    let ask: (String, [String]) -> MemoryCommands.Result? = { command, arguments in
+        guard let socket = sockets.first, caller != nil,
+              let reply = try? ControlSocket.send(ControlRequest(command: command, arguments: arguments, caller: caller), to: socket)
+        else { return nil }
+        return MemoryCommands.Result(ok: reply.ok, output: reply.output.isEmpty ? "done" : reply.output)
+    }
+    MemoryMCPServer(vault: .configured(), folder: folder, agent: agent, onChange: tellApp, ask: ask).run()
     exit(0)
 }
 if command == "memory" {

@@ -254,8 +254,18 @@ struct SessionRow: View {
                             .foregroundStyle(session.status.tone == .idle ? Palette.faint : session.status.tone.color)
                             .lineLimit(1)
                     }
+                    // What it told the other agents it's on (agentworld-ctl doing).
+                    if let doing = session.doing {
+                        Text("↳ " + doing).font(.mono(10)).foregroundStyle(Palette.muted).lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
+                if let waiting = model.inboxes[session.id], !waiting.isEmpty {
+                    Label("\(waiting.count)", systemImage: "envelope.fill")
+                        .font(.mono(9.5))
+                        .foregroundStyle(Palette.warning)
+                        .help("Messages from other agents, handed over when its turn is over")
+                }
             }
             .padding(.leading, 22)
             .padding(.trailing, 6)
@@ -265,6 +275,6 @@ struct SessionRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("\(session.label) in \(session.folderName): \(session.status.text)")
+        .help("\(session.label) in \(session.folderName): \(session.status.text)" + (session.doing.map { " — doing: \($0)" } ?? ""))
     }
 }

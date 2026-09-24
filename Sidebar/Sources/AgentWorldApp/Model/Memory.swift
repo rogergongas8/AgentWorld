@@ -325,6 +325,11 @@ enum MemoryInstructions {
       (decision, howto, gotcha, context or preference).
     - Update or delete notes that turn out wrong. No secrets, and nothing the
       code or git history already records.
+
+    Inside AgentWorld, other agents may work in the same project at the same
+    time. Check `agentworld-ctl board` (or team_board) when you start, say what
+    you're on with `agentworld-ctl doing "…"`, and message an agent before
+    editing files it touched (`agentworld-ctl message '#n' "…"`).
     """
 
     struct Target {

@@ -52,6 +52,12 @@ using each CLI's own features rather than Claude-only logic.
   `[[links]]`, backlinks, editing, a graph of the links; Memory section in
   the panel (6), notes in ⌘K, Open in Obsidian.
 
+- **Agents in touch** (any CLI, same workspace): `agentworld-ctl board`
+  (who's doing what, the files each surely edited), `doing`, `message
+  <#n|all>` handed over when the receiver's turn is over, `inbox`; the same
+  as team_* MCP tools; a warning to both agents and you when two edit the
+  same file. Also: switching tabs shows that tab's terminal (was stuck).
+
 ## Next
 
 1. **Memory, next**: tags and a timeline in the view; offer to import each
@@ -92,5 +98,8 @@ snapshots can't capture:
 - Memory with real CLIs: each one's MCP tools after Settings › Memory
   connects it, and Open in Obsidian (registers the vault while Obsidian is
   closed; otherwise "Open folder as vault").
+- Agents messaging each other with real CLIs: delivery into Claude and
+  Codex prompts when their turn ends, and Gemini & co. picking theirs up
+  from the 📬 hint.
 - The notes view with the mouse: clicking [[links]], editing and ⌘S,
   delete (click twice), the graph's hover and click.

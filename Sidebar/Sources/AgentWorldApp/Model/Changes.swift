@@ -10,6 +10,10 @@ struct WorkspaceChanges: Equatable {
     var files: [FileChange]
     /// File path → the sessions that were working when it changed.
     var touchedBy: [String: [UUID]] = [:]
+    /// File path → the sessions known for sure to have edited it: the CLI
+    /// recorded the edit, or it was the only one working when it changed.
+    /// What the board and conflict warnings go by (no false alarms).
+    var sureBy: [String: [UUID]] = [:]
     /// Last seen modification time per path, to notice the next change.
     var stamps: [String: Date] = [:]
 
@@ -71,20 +75,27 @@ extension AppModel {
         let resolvedRoot = URL(fileURLWithPath: read.root).resolvingSymlinksInPath().path
         for file in read.changes {
             var who = previous?.touchedBy[file.path] ?? []
+            var sure = previous?.sureBy[file.path] ?? []
             // Exact where the CLI says what it edited (Claude's Edit/Write calls,
             // rebuilt from the transcript after a relaunch too).
             let full = URL(fileURLWithPath: resolvedRoot).appendingPathComponent(file.path).path
-            for (id, files) in edited where files.contains(full) && !who.contains(id) {
-                who.append(id)
+            for (id, files) in edited where files.contains(full) {
+                if !who.contains(id) { who.append(id) }
+                if !sure.contains(id) { sure.append(id) }
             }
             let stamp = stamps[file.path]
             // First sight on launch isn't news: only changes seen happening count.
             let changed = previous != nil && (previous?.stamps[file.path] != stamp || previous?.files.contains { $0.path == file.path } == false)
             if changed { who += working.filter { !who.contains($0) } }
+            if changed, working.count == 1, !sure.contains(working[0]) { sure.append(working[0]) }
             if !who.isEmpty { next.touchedBy[file.path] = who }
+            if !sure.isEmpty { next.sureBy[file.path] = sure }
             if let stamp { next.stamps[file.path] = stamp }
         }
-        if next != previous { changes[folder] = next }
+        if next != previous {
+            changes[folder] = next
+            warnAboutConflicts(in: folder)
+        }
     }
 
     /// The sessions still open among those that touched `path`.

@@ -169,6 +169,8 @@ extension AppModel {
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             if self.routeSwitcher(event) { return nil }
+            // You're typing here: other agents' messages wait.
+            if event.window?.isMainWindow == true, !self.panel.isFocused { self.focusedSession?.lastKeyAt = Date() }
             return self.route(event) ? nil : event
         }
         NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
