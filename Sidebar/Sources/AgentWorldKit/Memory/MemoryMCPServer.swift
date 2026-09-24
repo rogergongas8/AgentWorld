@@ -26,19 +26,9 @@ public final class MemoryMCPServer {
     }
 
     static let instructions = """
-    A memory shared by every agent CLI the user runs (Claude Code, Codex, Gemini…), \
-    kept as Markdown notes the user also reads in Obsidian. Inside AgentWorld, the team_* \
-    tools show the other agents working in the same project and let you message them. Notes belong to the \
-    current project or are global (about the user, for every project). \
-    When the user asks you to remember something, memory_write it here too (not only in a \
-    memory of your own), or the other CLIs won't know it; when asked about the user or the \
-    project, memory_search before saying you don't know. \
-    Before starting non-trivial work, memory_search for the topic: another agent may \
-    already know the answer. When you learn something a future agent would need \
-    (a decision and why, how to run or test the project, a gotcha, a user \
-    preference), write it: one fact or topic per note, a clear name, a one-line \
-    description and its kind (context, howto, decision, gotcha, preference). Update or delete notes that turn out wrong instead of adding near-copies. \
-    Don't store secrets, or what the code or git history already records.
+    Notes shared by all the user's agent CLIs (per project, or global about the user), \
+    plus what Claude and Gemini remember on their own: use the memory tool to look things up \
+    and to keep what other agents will need; the team tool to coordinate with agents working here.
     """
 
     // MARK: - Loop
@@ -95,19 +85,25 @@ public final class MemoryMCPServer {
     // MARK: - Tools
 
     func call(_ tool: String, _ arguments: [String: Any]) -> MemoryCommands.Result {
+        // Two tools with an action each (fewer tokens in every session); the
+        // older one-tool-per-action names still work.
+        if tool == "memory" || tool == "team" {
+            let action = (arguments["action"] as? String ?? (tool == "memory" ? "search" : "board")).lowercased()
+            return call(tool + "_" + action, arguments)
+        }
         let commands = MemoryCommands(vault: vault, folder: folder, agent: agent)
         let string = { (key: String) in arguments[key] as? String }
         let outcome: MemoryCommands.Result
         switch tool {
         case "memory_search":
-            outcome = commands.search(string("query") ?? "", scope: string("scope"))
+            outcome = commands.search(string("query") ?? string("text") ?? "", scope: string("scope"))
         case "memory_list":
             outcome = commands.list(scope: string("scope"))
         case "memory_read":
             outcome = commands.read(string("name") ?? "")
         case "memory_write":
             let tags = (arguments["tags"] as? [String]) ?? string("tags")?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
-            outcome = commands.write(name: string("name") ?? "", body: string("content") ?? "",
+            outcome = commands.write(name: string("name") ?? "", body: string("content") ?? string("text") ?? "",
                                      global: arguments["global"] as? Bool ?? false, description: string("description"), kind: string("kind"),
                                      tags: tags, append: arguments["append"] as? Bool ?? false)
         case "memory_delete":
@@ -128,71 +124,38 @@ public final class MemoryMCPServer {
         return outcome
     }
 
-    static var scopeProperty: [String: Any] {
-        [
-            "type": "string", "enum": ["project", "global", "all"],
-            "description": "project: this project's notes; global: notes for every project; all: every project's. Default: this project and global.",
-        ]
-    }
-
     static var tools: [[String: Any]] { [
         [
-            "name": "memory_search",
-            "description": "Search the shared memory (notes from every agent CLI) for notes mentioning all these words. Use before starting work on a topic.",
-            "inputSchema": ["type": "object", "properties": ["query": ["type": "string"], "scope": scopeProperty], "required": ["query"]],
-        ],
-        [
-            "name": "memory_list",
-            "description": "List the shared memory's notes (name, description, who wrote it, when).",
-            "inputSchema": ["type": "object", "properties": ["scope": scopeProperty]],
-        ],
-        [
-            "name": "memory_read",
-            "description": "Read a note of the shared memory by name (or scope/name).",
-            "inputSchema": ["type": "object", "properties": ["name": ["type": "string"]], "required": ["name"]],
-        ],
-        [
-            "name": "memory_write",
-            "description": "Create, replace or append to a note in the shared memory. One fact or topic per note; search first and update an existing note rather than adding a near-copy. Link other notes with [[name]].",
+            "name": "memory",
+            "description": "Shared memory of all the user's agent CLIs. search: before work, or when asked something you don't know. write: when told to remember something, or you learned what another agent will need (one topic per note). read, list, delete: the rest.",
             "inputSchema": [
                 "type": "object",
                 "properties": [
-                    "name": ["type": "string", "description": "short-kebab-case name"],
-                    "content": ["type": "string", "description": "Markdown text of the note"],
-                    "description": ["type": "string", "description": "one line: what the note is about"],
-                    "kind": ["type": "string", "enum": MemoryVault.kinds.map(\.id),
-                             "description": MemoryVault.kinds.map { "\($0.id): \($0.meaning)" }.joined(separator: "; ")],
-                    "tags": ["type": "array", "items": ["type": "string"]],
-                    "global": ["type": "boolean", "description": "true for every project (facts about the user); default: this project"],
-                    "append": ["type": "boolean", "description": "add to the end of the note instead of replacing it"],
+                    "action": ["type": "string", "enum": ["search", "read", "write", "list", "delete"]],
+                    "query": ["type": "string", "description": "search: words to look for"],
+                    "name": ["type": "string", "description": "read/write/delete: short-kebab-case note name"],
+                    "content": ["type": "string", "description": "write: Markdown; link notes with [[name]]"],
+                    "description": ["type": "string", "description": "write: one line"],
+                    "kind": ["type": "string", "enum": MemoryVault.kinds.map(\.id)],
+                    "global": ["type": "boolean", "description": "write: about the user, for every project"],
+                    "append": ["type": "boolean"],
+                    "scope": ["type": "string", "enum": ["project", "global", "all"]],
                 ],
-                "required": ["name", "content"],
+                "required": ["action"],
             ],
         ],
         [
-            "name": "memory_delete",
-            "description": "Delete a note of the shared memory that is wrong or no longer true.",
-            "inputSchema": ["type": "object", "properties": ["name": ["type": "string"]], "required": ["name"]],
-        ],
-        [
-            "name": "team_board",
-            "description": "The other agents working in this project right now (any CLI): status, what each is doing, the files each edited, and messages waiting for you. Check it before editing files others may be working on.",
-            "inputSchema": ["type": "object", "properties": ["all": ["type": "boolean", "description": "every workspace, not just this one"]]],
-        ],
-        [
-            "name": "team_doing",
-            "description": "Tell the other agents what you're working on now (one line; \"-\" clears it).",
-            "inputSchema": ["type": "object", "properties": ["text": ["type": "string"]], "required": ["text"]],
-        ],
-        [
-            "name": "team_message",
-            "description": "Send a short message to another agent (\"#3\") or to all of them here (\"all\"). It's handed over when its turn is over. Use it to coordinate (\"I'm changing the API in x.ts\"), not to chat.",
-            "inputSchema": ["type": "object", "properties": ["to": ["type": "string"], "text": ["type": "string"]], "required": ["to", "text"]],
-        ],
-        [
-            "name": "team_inbox",
-            "description": "Messages other agents sent you that haven't reached you yet.",
-            "inputSchema": ["type": "object", "properties": [:] as [String: Any]],
+            "name": "team",
+            "description": "Other agents working in this project now (any CLI). board: who's doing what, which files. doing: say what you're on. message: to \"#3\" or \"all\", delivered when their turn ends. inbox: messages for you.",
+            "inputSchema": [
+                "type": "object",
+                "properties": [
+                    "action": ["type": "string", "enum": ["board", "doing", "message", "inbox"]],
+                    "to": ["type": "string"],
+                    "text": ["type": "string"],
+                ],
+                "required": ["action"],
+            ],
         ],
     ] }
 

@@ -12,7 +12,7 @@ enum AgentWorldSkill {
     static let text = """
     ---
     name: agentworld
-    description: Drive the AgentWorld app you are running inside — open other agent CLIs (Claude, Codex, Gemini…) in panes beside you, hand them tasks, wait for them, read their answers, and talk to the user through your on-screen character. Use when $AGENTWORLD_SOCKET is set and the user asks for a second opinion, a reviewer, parallel work, or to compare CLIs; or to leave the user a short status line or notification during long work; to coordinate with the other agents working in the same project (who's doing what, which files, messages between agents); also to see a project's structure cheaply (clusters, hubs, what depends on a file) with agentworld-ctl map; and to search, read and write the shared memory every CLI uses (agentworld-ctl memory) before starting a task and when you learn something worth keeping.
+    description: Drive the AgentWorld app you run inside (when $AGENTWORLD_SOCKET is set) with agentworld-ctl — open other agent CLIs beside you and hand them work, coordinate with agents in the same project (board, messages), the shared memory all CLIs use, a project map, and talking to the user through your character.
     ---
 
     # AgentWorld
@@ -56,8 +56,8 @@ enum AgentWorldSkill {
     Notes every agent CLI here reads and writes: Markdown in a vault the user
     also browses (in the app with ⌘⇧O, or in Obsidian). They belong to this
     project or are global (about the user, for every project). This works
-    even outside AgentWorld. If you have the `agentworld-memory` MCP tools
-    (memory_search, memory_write…), use those; otherwise:
+    even outside AgentWorld. If you have the `agentworld-memory` MCP server
+    (the `memory` tool, actions search, read, write, list, delete), use it; otherwise:
 
     ```sh
     agentworld-ctl memory                          # this project's notes + global ones
@@ -72,10 +72,10 @@ enum AgentWorldSkill {
     agentworld-ctl memory-show deploy              # show the user that note
     ```
 
-    - **"Remember this"** from the user: write it here too, not only in a
-      memory of your own, or the other CLIs won't know it. Asked something
-      about the user or the project you don't know: search here first
-      (searches also read Claude's and Gemini's own memories).
+    - **"Remember this"** from the user: Claude Code and Gemini CLI can keep
+      it in their own memory (searches here read it); any other CLI writes it
+      here. Asked something about the user or the project you don't know:
+      search here first.
     - **Before** non-trivial work, search for the topic: another agent (maybe
       another CLI) may already know how to run, test or deploy this project.
     - **Write** when you learn what a future agent would need: a decision and
@@ -104,7 +104,7 @@ enum AgentWorldSkill {
     - Messages arrive in your prompt as "[AgentWorld · message from…]" when
       your turn is over. Act on them; reply only if it's needed, briefly.
     - AgentWorld warns both of you when two agents edit the same file.
-    - The MCP tools team_board, team_doing, team_message and team_inbox do the same.
+    - The `team` MCP tool (actions board, doing, message, inbox) does the same.
 
     ## Handing work to another pane
 

@@ -157,11 +157,19 @@ import Testing
         #expect(hello.contains(#""protocolVersion":"2025-03-26""#))
         #expect(server.handle(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#) == nil)
         let tools = try #require(server.handle(#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
-        for name in ["memory_search", "memory_list", "memory_read", "memory_write", "memory_delete"] { #expect(tools.contains(name)) }
-        let write = try #require(server.handle(#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"memory_write","arguments":{"name":"a","content":"Hello"}}}"#))
+        #expect(tools.contains(#""name":"memory""#) && tools.contains(#""name":"team""#))
+        #expect(!tools.contains("memory_write"))
+        let write = try #require(server.handle(#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"memory","arguments":{"action":"write","name":"a","content":"Hello"}}}"#))
         #expect(write.contains(#""isError":false"#))
         #expect(vault.note(named: "proj/a")?.agents == ["codex"])
         #expect(changed == ["saved proj/a"])
+        let found = try #require(server.handle(#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"memory","arguments":{"action":"search","query":"hello"}}}"#))
+        #expect(found.contains("proj/a") || found.contains("  a —"))
+        // The older one-tool-per-action names still work.
+        let old = try #require(server.handle(#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"memory_read","arguments":{"name":"a"}}}"#))
+        #expect(old.contains("Hello"))
+        let team = try #require(server.handle(#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"team","arguments":{"action":"board"}}}"#))
+        #expect(team.contains("Not running inside AgentWorld"))
         let unknown = try #require(server.handle(#"{"jsonrpc":"2.0","id":4,"method":"nope"}"#))
         #expect(unknown.contains("-32601"))
     }

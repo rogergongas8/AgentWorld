@@ -314,31 +314,21 @@ enum MemoryInstructions {
     static let start = "<!-- agentworld-memory:start — added by AgentWorld; turn off in Settings › Memory -->"
     static let end = "<!-- agentworld-memory:end -->"
 
-    static let text = """
-    ## Shared memory (AgentWorld)
+    /// Short on purpose: it's read in every session. Claude and Gemini keep
+    /// "remember this" in their own memory, which the shared search already
+    /// reads, so they're only told where to look; the others (their memory,
+    /// if any, can't be read) are told to write to the shared one.
+    static func text(for provider: Provider) -> String {
+        let sharedAlready = [Provider.claude, .gemini].contains(provider)
+        let keep = sharedAlready
+            ? "What you remember on your own is shared with the user's other agent CLIs automatically."
+            : "The user's agent CLIs share a memory: when asked to remember something, or you learn what another agent will need, save it there (`memory` tool, action write; or `agentworld-ctl memory write <name> \"…\"`)."
+        return """
+        ## Shared memory (AgentWorld)
 
-    You share a memory with the user's other agent CLIs (Claude Code, Codex,
-    Gemini…): Markdown notes per project, plus global ones about the user.
-    Use the `agentworld-memory` MCP tools (memory_search, memory_read,
-    memory_write…) if you have them, else `agentworld-ctl memory` in the shell.
-
-    - When the user asks you to remember something, save it in this shared
-      memory (as well as any memory of your own), or the other CLIs won't know it.
-    - When asked something you don't know about the user or the project,
-      search the shared memory before answering.
-    - Before non-trivial work in a project, search the memory for the topic.
-    - When you learn something another agent would need (how to build, test
-      or run it; a decision and why; a gotcha; a user preference), write it:
-      one topic per note, a clear name, a one-line description, and its kind
-      (decision, howto, gotcha, context or preference).
-    - Update or delete notes that turn out wrong. No secrets, and nothing the
-      code or git history already records.
-
-    Inside AgentWorld, other agents may work in the same project at the same
-    time. Check `agentworld-ctl board` (or team_board) when you start, say what
-    you're on with `agentworld-ctl doing "…"`, and message an agent before
-    editing files it touched (`agentworld-ctl message '#n' "…"`).
-    """
+        \(keep) Before saying you don't know something about the user or this project, search it (`memory` tool, action search; or `agentworld-ctl memory search …`). Other agents may be working here too: `team` tool or `agentworld-ctl board`.
+        """
+    }
 
     struct Target {
         let provider: Provider
@@ -377,7 +367,7 @@ enum MemoryInstructions {
 
     static func install(_ target: Target) {
         let url = home.appendingPathComponent(target.file)
-        let block = start + "\n" + text + "\n" + end + "\n"
+        let block = start + "\n" + text(for: target.provider) + "\n" + end + "\n"
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let next: String
         if target.ownFile {
