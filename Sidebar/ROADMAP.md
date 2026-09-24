@@ -41,18 +41,34 @@ using each CLI's own features rather than Claude-only logic.
 - **Grid button** on the home screen: hover 3×3 boxes, open that many tiled
   (up to 9 panes per tab).
 
+## Done (2026-09-24)
+
+- **Shared memory** for every CLI: Markdown notes per project plus global,
+  in `~/AgentWorld/Memory` (an Obsidian vault). `agentworld-ctl memory`
+  (search, read, write, append, delete) and the same as MCP tools
+  (`agentworld-ctl mcp`, registered per CLI from Settings › Memory); who
+  wrote what, an index per project, works without the app.
+- **Memory view** (⌘⇧O, the brain): rendered notes with clickable
+  `[[links]]`, backlinks, editing, a graph of the links; Memory section in
+  the panel (6), notes in ⌘K, Open in Obsidian.
+
 ## Next
 
-1. **Cost next to tokens**, opt-in, from a price table you can edit (API
+1. **Memory, next**: tags and a timeline in the view; offer to import each
+   CLI's own memory (CLAUDE.md, AGENTS.md, GEMINI.md) as notes; notes on
+   the project map beside the files they mention; a nudge to write a note
+   when a long session ends.
+
+2. **Cost next to tokens**, opt-in, from a price table you can edit (API
    users); subscriptions keep tokens only.
-2. **Drag a tab onto another** to merge them into one tiled tab, and a pane
+3. **Drag a tab onto another** to merge them into one tiled tab, and a pane
    out to its own tab.
-3. **Smarter map links**: per-language resolvers (Go packages, Rust `mod`,
+4. **Smarter map links**: per-language resolvers (Go packages, Rust `mod`,
    Swift targets) instead of the shared type-name heuristic, and folders
    collapsed into single dots for very large repos.
-4. **Map over time**: replay how the changes spread across the map during
+5. **Map over time**: replay how the changes spread across the map during
    a session.
-5. **Timing-based attribution that survives a relaunch** for CLIs without a
+6. **Timing-based attribution that survives a relaunch** for CLIs without a
    transcript of their edits (keep it in `workspaces.json`).
 
 ## To verify by hand
@@ -73,3 +89,8 @@ snapshots can't capture:
 - Resuming a Codex conversation (`codex resume <id>`) and Codex's usage and
   plan window with real sessions.
 - A full workflow (e.g. *Build & review*) with real CLIs, not just shells.
+- Memory with real CLIs: each one's MCP tools after Settings › Memory
+  connects it, and Open in Obsidian (registers the vault while Obsidian is
+  closed; otherwise "Open folder as vault").
+- The notes view with the mouse: clicking [[links]], editing and ⌘S,
+  delete (click twice), the graph's hover and click.
