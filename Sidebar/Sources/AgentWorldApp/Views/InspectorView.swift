@@ -391,7 +391,7 @@ struct PanelRow: View {
         case .tip: "Click to type it into the terminal."
         case .command: "Click to type it into the terminal."
         case .change: "Click (or ↩) for its diff; u types its path into the terminal; m shows it on the map."
-        case .note: "Click (or ↩) to read it; u mentions it in the terminal; o opens it in Obsidian."
+        case .note: "Click (or ↩) to read it; u mentions it in the terminal."
         case .server: "An MCP server: tools from another service the CLI can call."
         case .plugin: "A plugin: a bundle of skills, agents, commands or servers."
         }

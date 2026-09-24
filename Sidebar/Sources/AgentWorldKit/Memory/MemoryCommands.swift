@@ -49,7 +49,7 @@ public struct MemoryCommands {
           --kind KIND                 context, howto, decision, gotcha or preference
           --tags a,b                  a few words to find it by
       memory delete <name>            remove a note that's wrong or no longer true
-      memory path                     where the vault lives (an Obsidian vault)
+      memory path                     where the notes live (a folder of Markdown)
 
     One fact or topic per note. Search before writing: update what exists
     rather than adding a near-copy. Link notes with [[other-note]].

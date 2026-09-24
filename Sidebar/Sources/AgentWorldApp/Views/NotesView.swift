@@ -5,7 +5,7 @@ import SwiftUI
 /// The shared memory, inside the app (⌘⇧O): every note your agents wrote,
 /// read as Markdown with `[[links]]` you can follow, what links back, who
 /// wrote it, and a graph of how the notes connect. Edit in place, or open
-/// the same files in Obsidian.
+/// the files in any editor.
 struct NotesView: View {
     @EnvironmentObject private var model: AppModel
     @State private var search = ""
@@ -129,9 +129,6 @@ struct NotesView: View {
                 naming = true
                 newName = ""
                 DispatchQueue.main.async { nameFocused = true }
-            }
-            ChromeButton(symbol: "arrow.up.forward.app", help: Obsidian.isInstalled ? "Open in Obsidian" : "Obsidian isn't installed") {
-                openInObsidian(selectedNote)
             }
             ChromeButton(symbol: "folder", help: "Show the vault in Finder") {
                 try? model.memoryVault.prepare()
@@ -421,9 +418,6 @@ struct NotesView: View {
                         Button { mode = "note" } label: { Label("Read it", systemImage: "doc.text") }
                     }
                     Button { startEditing(note); mode = "note" } label: { Label("Edit", systemImage: "pencil") }
-                    // A CLI's own memory lives outside the vault, where Obsidian doesn't look.
-                    Button { openInObsidian(note) } label: { Label("Open in Obsidian", systemImage: "arrow.up.forward.app") }
-                        .disabled(!Obsidian.isInstalled || note.isNative)
                     Button { NSWorkspace.shared.activateFileViewerSelecting([note.url]) } label: {
                         Label("Show in Finder", systemImage: "folder")
                     }
@@ -472,14 +466,6 @@ struct NotesView: View {
         }
         model.openNoteID = shown.first { $0.id != note.id }?.id
         model.refreshMemory()
-    }
-
-    private func openInObsidian(_ note: MemoryNote?) {
-        switch Obsidian.open(vault: model.memoryVault.root, file: note?.url) {
-        case .opened: message = nil
-        case .notInstalled: message = "Obsidian isn't installed (brew install --cask obsidian)"
-        case .needsVault: message = "In Obsidian: Open folder as vault › \(model.memoryVault.root.path)"
-        }
     }
 }
 
@@ -678,7 +664,7 @@ struct NoteMarkdown: View {
 
 // MARK: - Graph
 
-/// The notes as a graph, the way Obsidian draws one: a dot per note (bigger
+/// The notes as a graph: a dot per note (bigger
 /// with more links, colored by project), a line per `[[link]]`.
 struct NotesGraph: View {
     @EnvironmentObject private var model: AppModel

@@ -54,7 +54,7 @@ final class Preferences: ObservableObject {
 
     // MARK: Memory
 
-    /// The shared memory's vault (also an Obsidian vault).
+    /// The shared memory's folder of notes.
     @Published var memoryFolder: String {
         didSet {
             defaults.set(memoryFolder, forKey: "memoryFolder")

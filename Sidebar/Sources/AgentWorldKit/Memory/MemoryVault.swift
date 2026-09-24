@@ -28,7 +28,7 @@ public struct MemoryNote: Identifiable, Hashable, Sendable {
     public var isNative: Bool { source != nil }
     public var isGlobal: Bool { scope == MemoryVault.globalScope }
 
-    /// The notes it links to with `[[wikilinks]]` (Obsidian's syntax).
+    /// The notes it links to with `[[wikilinks]]`.
     public var links: [String] {
         var found: [String] = []
         var rest = body[...]
@@ -45,7 +45,7 @@ public struct MemoryNote: Identifiable, Hashable, Sendable {
 
 /// The shared memory: a folder of Markdown notes every agent CLI reads and
 /// writes (through `agentworld-ctl memory` or its MCP server), and that is
-/// also an Obsidian vault. One folder per project plus `global/`, each with
+/// plain Markdown any editor opens. One folder per project plus `global/`, each with
 /// an `index.md` kept up to date; `Home.md` at the top links them.
 public struct MemoryVault: Sendable {
     public static let globalScope = "global"
@@ -299,7 +299,7 @@ public struct MemoryVault: Sendable {
 
     What your agent CLIs (Claude Code, Codex, Gemini…) learned and want the
     others to know, kept by AgentWorld. Every note is plain Markdown: read and
-    edit them here, in Obsidian, or ask an agent to.
+    edit them in AgentWorld (⌘⇧O), in any editor, or ask an agent to.
 
     - [[global/index|Global]]: facts about you and how you like to work, for every project.
     - Each project has its own folder with an `index` of its notes.
@@ -310,7 +310,7 @@ public struct MemoryVault: Sendable {
     """
 
     /// `<scope>/index.md`: every note with its description, for a quick look
-    /// (agents read it before searching) and for Obsidian's graph.
+    /// (agents read it before searching).
     func rebuildIndex(_ scope: String) throws {
         let notes = self.notes(in: [scope]).sorted { $0.name < $1.name }
         let title = scope == Self.globalScope ? "Global memory" : "Memory: \(scope)"
@@ -358,7 +358,7 @@ public struct MemoryVault: Sendable {
             agents: agents,
             tags: front.list("tags"),
             created: front["created"].flatMap(date),
-            // Edited by hand (in Obsidian) after an agent wrote it: the file is newer.
+            // Edited by hand after an agent wrote it: the file is newer.
             updated: max(front["updated"].flatMap(date) ?? .distantPast, modified.addingTimeInterval(-2)),
             body: body.trimmingCharacters(in: .whitespacesAndNewlines),
             url: url

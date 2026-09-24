@@ -3,7 +3,7 @@ import AppKit
 import Foundation
 
 /// The shared memory in the app: the notes of the workspace on screen and
-/// the global ones, the notes view (⌘⇧O) and the way out to Obsidian.
+/// the global ones, and the notes view (⌘⇧O).
 extension AppModel {
     var memoryVault: MemoryVault { MemoryVault(root: URL(fileURLWithPath: Preferences.shared.memoryFolder, isDirectory: true)) }
 
@@ -87,69 +87,6 @@ extension AppModel {
         } else {
             session.type("agentworld-ctl memory read \(note.id)")
         }
-    }
-}
-
-// MARK: - Obsidian
-
-/// Opens the vault (or one note) in Obsidian, registering the vault with
-/// Obsidian the first time so its `obsidian://` links work.
-enum Obsidian {
-    static let bundleID = "md.obsidian"
-
-    static var appURL: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) }
-    static var isInstalled: Bool { appURL != nil }
-    static var isRunning: Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty }
-
-    private static var registry: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/obsidian/obsidian.json")
-    }
-
-    static func isRegistered(_ vault: URL) -> Bool {
-        registeredPaths().contains(vault.standardizedFileURL.path)
-    }
-
-    private static func registeredPaths() -> [String] {
-        guard let data = try? Data(contentsOf: registry),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let vaults = json["vaults"] as? [String: Any] else { return [] }
-        return vaults.values.compactMap { ($0 as? [String: Any])?["path"] as? String }.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
-    }
-
-    /// Adds the vault to Obsidian's list. Only while Obsidian is closed: it
-    /// rewrites that file itself when it quits.
-    @discardableResult
-    static func register(_ vault: URL) -> Bool {
-        guard !isRunning else { return false }
-        var json = (try? Data(contentsOf: registry)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-        var vaults = json["vaults"] as? [String: Any] ?? [:]
-        let id = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(16))
-        vaults[id] = ["path": vault.standardizedFileURL.path, "ts": Int(Date().timeIntervalSince1970 * 1000), "open": true]
-        json["vaults"] = vaults
-        guard let data = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted]) else { return false }
-        try? FileManager.default.createDirectory(at: registry.deletingLastPathComponent(), withIntermediateDirectories: true)
-        return (try? data.write(to: registry, options: .atomic)) != nil
-    }
-
-    enum Outcome { case opened, notInstalled, needsVault }
-
-    /// Opens `file` (a note) or the vault's Home. When Obsidian is already
-    /// open and doesn't know the vault yet, it opens Obsidian and says so.
-    @discardableResult
-    static func open(vault: URL, file: URL? = nil) -> Outcome {
-        guard let app = appURL else { return .notInstalled }
-        try? MemoryVault(root: vault).prepare()
-        if !isRegistered(vault), !register(vault) {
-            NSWorkspace.shared.openApplication(at: app, configuration: .init())
-            return .needsVault
-        }
-        let target = file ?? vault.appendingPathComponent("Home.md")
-        var components = URLComponents()
-        components.scheme = "obsidian"
-        components.host = "open"
-        components.queryItems = [URLQueryItem(name: "path", value: target.path)]
-        if let url = components.url { NSWorkspace.shared.open(url) }
-        return .opened
     }
 }
 

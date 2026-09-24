@@ -252,13 +252,6 @@ extension AppModel {
                     leavePanel()
                     showOnMap(change, in: selectedFolder)
                 }
-            case "o":
-                let list = items()
-                if list.indices.contains(panel.selection), case .note(let note) = list[panel.selection] {
-                    Obsidian.open(vault: memoryVault.root, file: note.url)
-                } else if panel.section == .memory {
-                    Obsidian.open(vault: memoryVault.root)
-                }
             default:
                 return false
             }

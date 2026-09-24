@@ -377,16 +377,12 @@ struct MemorySettings: View {
                     HStack {
                         Text("\(model.memoryNotes.count) in \(Set(model.memoryNotes.map(\.scope)).count) scopes").foregroundStyle(.secondary)
                         Button("Open") { model.openNotes() }
-                        Button(Obsidian.isInstalled ? "Open in Obsidian" : "Obsidian not installed") {
-                            Obsidian.open(vault: URL(fileURLWithPath: preferences.memoryFolder, isDirectory: true))
-                        }
-                        .disabled(!Obsidian.isInstalled)
                     }
                 }
             } header: {
                 Text("Shared memory")
             } footer: {
-                Text("Markdown notes every agent CLI reads and writes: one folder per project, plus global. It's also an Obsidian vault. Terminals opened after a change use the new folder.")
+                Text("Markdown notes every agent CLI reads and writes: one folder per project, plus global. Terminals opened after a change use the new folder.")
                     .settingsFootnote()
             }
             Section {
@@ -456,7 +452,7 @@ struct MemorySettings: View {
         panel.canCreateDirectories = true
         panel.directoryURL = URL(fileURLWithPath: preferences.memoryFolder)
         panel.prompt = "Use as Vault"
-        panel.message = "Pick a folder for the shared memory (an existing Obsidian vault works too)."
+        panel.message = "Pick a folder for the shared memory (a folder of notes you already keep works too)."
         if panel.runModal() == .OK, let url = panel.url {
             preferences.memoryFolder = url.path
             try? MemoryVault(root: url).prepare()

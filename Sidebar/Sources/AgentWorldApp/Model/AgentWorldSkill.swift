@@ -54,7 +54,7 @@ enum AgentWorldSkill {
     ## Shared memory
 
     Notes every agent CLI here reads and writes: Markdown in a vault the user
-    also browses (in the app with ⌘⇧O, or in Obsidian). They belong to this
+    also browses in the app (⌘⇧O). They belong to this
     project or are global (about the user, for every project). This works
     even outside AgentWorld. If you have the `agentworld-memory` MCP server
     (the `memory` tool, actions search, read, write, list, delete), use it; otherwise:

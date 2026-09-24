@@ -428,13 +428,7 @@ struct PaletteItem: Identifiable {
                                  keywords: "graph dependencies imports files structure architecture", weight: 2) { $0.openProjectMap() })
         items.append(PaletteItem(id: "act:memory", kind: "view", title: "Memory", subtitle: "the notes every agent CLI shares, with links and a graph",
                                  symbol: "brain", color: Palette.claude,
-                                 keywords: "notes obsidian vault knowledge remember wiki", weight: 2) { $0.openNotes() })
-        if Obsidian.isInstalled {
-            items.append(PaletteItem(id: "act:obsidian", kind: "app", title: "Open memory in Obsidian", subtitle: model.memoryVault.root.path,
-                                     symbol: "arrow.up.forward.app", keywords: "notes vault markdown", weight: 1) { model in
-                Obsidian.open(vault: model.memoryVault.root)
-            })
-        }
+                                 keywords: "notes vault knowledge remember wiki obsidian", weight: 2) { $0.openNotes() })
         for note in model.workspaceMemory.prefix(40) {
             items.append(PaletteItem(id: "note:\(note.id)", kind: "note", title: note.name, subtitle: note.description,
                                      symbol: "note.text", color: note.isGlobal ? Palette.skill : Palette.agent,

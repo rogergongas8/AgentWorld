@@ -44,13 +44,13 @@ using each CLI's own features rather than Claude-only logic.
 ## Done (2026-09-24)
 
 - **Shared memory** for every CLI: Markdown notes per project plus global,
-  in `~/AgentWorld/Memory` (an Obsidian vault). `agentworld-ctl memory`
+  in `~/AgentWorld/Memory` (plain Markdown). `agentworld-ctl memory`
   (search, read, write, append, delete) and the same as MCP tools
   (`agentworld-ctl mcp`, registered per CLI from Settings › Memory); who
   wrote what, an index per project, works without the app.
 - **Memory view** (⌘⇧O, the brain): rendered notes with clickable
   `[[links]]`, backlinks, editing, a graph of the links; Memory section in
-  the panel (6), notes in ⌘K, Open in Obsidian.
+  the panel (6), notes in ⌘K.
 
 - **Agents in touch** (any CLI, same workspace): `agentworld-ctl board`
   (who's doing what, the files each surely edited), `doing`, `message
@@ -96,8 +96,7 @@ snapshots can't capture:
   plan window with real sessions.
 - A full workflow (e.g. *Build & review*) with real CLIs, not just shells.
 - Memory with real CLIs: each one's MCP tools after Settings › Memory
-  connects it, and Open in Obsidian (registers the vault while Obsidian is
-  closed; otherwise "Open folder as vault").
+  connects it.
 - Agents messaging each other with real CLIs: delivery into Claude and
   Codex prompts when their turn ends, and Gemini & co. picking theirs up
   from the 📬 hint.

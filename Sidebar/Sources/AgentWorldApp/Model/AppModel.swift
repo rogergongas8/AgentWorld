@@ -187,7 +187,7 @@ final class AppModel: ObservableObject {
         if ticks % 20 == 0 { saveWorkspaces() }
         if ticks % 60 == 1 { refreshGit() }
         if ticks % 60 == 3 { refreshUsage() }
-        // Notes edited by hand (in Obsidian, say) show up within a few seconds.
+        // Notes edited outside the app show up within a few seconds.
         if ticks % 6 == 5 { refreshMemory() }
         if ticks % 2 == 1 { deliverMessages(now: date) }
         // The workspace on screen every 2 s, and any other where agents work.
