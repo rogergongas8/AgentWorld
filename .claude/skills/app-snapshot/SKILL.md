@@ -18,7 +18,7 @@ the top of `Sidebar/Sources/AgentWorldApp/Model/DebugControl.swift`.
    ```sh
    S=<scratch dir>; : > $S/ctl; echo '[]' > $S/ws.json
    (AGENTWORLD_WORKSPACES=$S/ws.json AGENTWORLD_DEBUG_CONTROL=$S/ctl \
-     .build/debug/AgentWorldApp --folder "$PWD/.." > $S/app.log 2>&1 &)
+     .build/debug/AgentWorldApp --cwd "$PWD/.." > $S/app.log 2>&1 &)
    sleep 5; pgrep -n AgentWorldApp > $S/pid
    ```
 
