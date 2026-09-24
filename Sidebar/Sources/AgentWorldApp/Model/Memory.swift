@@ -15,8 +15,12 @@ extension AppModel {
         guard !memoryInFlight else { return }
         memoryInFlight = true
         let vault = memoryVault
+        let folders = Array(Set(folders + [selectedFolder]))
         Task.detached(priority: .utility) {
-            let notes = vault.notes()
+            // The vault, plus what each CLI keeps on its own (read-only).
+            var seen = Set<String>()
+            let native = folders.flatMap { NativeMemories.notes(forFolder: $0) }.filter { seen.insert($0.id).inserted }
+            let notes = (vault.notes() + native).sorted { $0.updated > $1.updated }
             await MainActor.run {
                 self.memoryInFlight = false
                 if notes != self.memoryNotes { self.memoryNotes = notes }
@@ -318,6 +322,10 @@ enum MemoryInstructions {
     Use the `agentworld-memory` MCP tools (memory_search, memory_read,
     memory_write…) if you have them, else `agentworld-ctl memory` in the shell.
 
+    - When the user asks you to remember something, save it in this shared
+      memory (as well as any memory of your own), or the other CLIs won't know it.
+    - When asked something you don't know about the user or the project,
+      search the shared memory before answering.
     - Before non-trivial work in a project, search the memory for the topic.
     - When you learn something another agent would need (how to build, test
       or run it; a decision and why; a gotcha; a user preference), write it:

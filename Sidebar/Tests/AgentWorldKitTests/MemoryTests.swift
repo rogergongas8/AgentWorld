@@ -46,6 +46,29 @@ import Testing
         #expect(vault.search("deploy").map(\.name) == ["deploy", "release-notes"])
         #expect(vault.search("deploy tag").map(\.name) == ["deploy"])
         #expect(vault.search("nothing-like-this").isEmpty)
+        // No note has every word: any of them, by stem ("deployment" finds "deploy").
+        #expect(vault.search("deployment schedule").map(\.name).first == "deploy")
+    }
+
+    @Test func readsWhatEachCLIRemembersOnItsOwn() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("aw-home-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let folder = home.appendingPathComponent("proj").path
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        let memory = home.appendingPathComponent(".claude/projects/" + ProjectSlug.slug(forCwd: folder) + "/memory")
+        try FileManager.default.createDirectory(at: memory, withIntermediateDirectories: true)
+        try "---\nname: user-favorite-number\ndescription: The user's favorite number is 6.\nmetadata:\n  type: user\n---\n\nIt's 6.\n"
+            .write(to: memory.appendingPathComponent("user_favorite_number.md"), atomically: true, encoding: .utf8)
+        try "- [x](x.md)\n".write(to: memory.appendingPathComponent("MEMORY.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini"), withIntermediateDirectories: true)
+        try "# Mine\n\n## Gemini Added Memories\n- Prefers tabs\n- Lives in Barcelona\n"
+            .write(to: home.appendingPathComponent(".gemini/GEMINI.md"), atomically: true, encoding: .utf8)
+        let notes = NativeMemories.notes(forFolder: folder, home: home)
+        #expect(notes.map(\.id).sorted() == ["claude:proj/user-favorite-number", "gemini:global/gemini-memories"])
+        #expect(notes.first { $0.source == "claude" }?.description == "The user's favorite number is 6.")
+        #expect(notes.first { $0.source == "claude" }?.kind == "preference")
+        #expect(notes.first { $0.source == "gemini" }?.body == "- Prefers tabs\n- Lives in Barcelona")
+        #expect(MemoryVault.rank(notes, by: "número favorito").first?.source == "claude")
     }
 
     @Test func readFallsBackToGlobalThenAnywhere() throws {

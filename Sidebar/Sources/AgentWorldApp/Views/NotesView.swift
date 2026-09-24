@@ -238,8 +238,13 @@ struct NotesView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(note.name).font(.mono(18, .bold)).foregroundStyle(Palette.cream).textSelection(.enabled)
                     Spacer()
-                    Button { startEditing(note) } label: { Label("Edit", systemImage: "pencil") }
-                        .buttonStyle(.borderless).font(.mono(11))
+                    if note.isReadOnly {
+                        Text("\(Provider.named(note.source ?? "")?.name ?? note.source ?? "")'s own memory · read-only")
+                            .font(.mono(10.5)).foregroundStyle(Palette.muted)
+                    } else {
+                        Button { startEditing(note) } label: { Label("Edit", systemImage: "pencil") }
+                            .buttonStyle(.borderless).font(.mono(11))
+                    }
                 }
                 if MemoryVault.firstLine(of: note.description) != MemoryVault.firstLine(of: note.body) {
                     Text(note.description).font(.mono(12)).foregroundStyle(Palette.muted).textSelection(.enabled)
@@ -395,15 +400,21 @@ struct NotesView: View {
                     if mode == "graph" {
                         Button { mode = "note" } label: { Label("Read it", systemImage: "doc.text") }
                     }
-                    Button { startEditing(note); mode = "note" } label: { Label("Edit", systemImage: "pencil") }
+                    if note.isReadOnly {
+                        Button { copyToShared(note) } label: { Label("Copy into the shared memory", systemImage: "square.and.arrow.down.on.square") }
+                    } else {
+                        Button { startEditing(note); mode = "note" } label: { Label("Edit", systemImage: "pencil") }
+                    }
                     Button { openInObsidian(note) } label: { Label("Open in Obsidian", systemImage: "arrow.up.forward.app") }
-                        .disabled(!Obsidian.isInstalled)
+                        .disabled(!Obsidian.isInstalled || note.isReadOnly)
                     Button { NSWorkspace.shared.activateFileViewerSelecting([note.url]) } label: {
                         Label("Show in Finder", systemImage: "folder")
                     }
-                    Button { delete(note) } label: {
-                        Label(confirmDelete ? "Click again to delete" : "Delete", systemImage: "trash")
-                            .foregroundStyle(confirmDelete ? Palette.error : Palette.text)
+                    if !note.isReadOnly {
+                        Button { delete(note) } label: {
+                            Label(confirmDelete ? "Click again to delete" : "Delete", systemImage: "trash")
+                                .foregroundStyle(confirmDelete ? Palette.error : Palette.text)
+                        }
                     }
                 }
                 .buttonStyle(.borderless)
@@ -433,6 +444,18 @@ struct NotesView: View {
         }
         .buttonStyle(.plain)
         .help(note.description)
+    }
+
+    /// A CLI's own memory into the vault, where every CLI reads and edits it.
+    private func copyToShared(_ note: MemoryNote) {
+        do {
+            let copy = try model.memoryVault.write(name: note.name, body: note.body, scope: note.scope, description: note.description,
+                                                   kind: note.kind, tags: note.tags, agent: note.agents.first)
+            model.openNoteID = copy.id
+            model.refreshMemory()
+        } catch {
+            message = "\(error)"
+        }
     }
 
     private func delete(_ note: MemoryNote) {

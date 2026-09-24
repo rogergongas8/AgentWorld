@@ -30,6 +30,9 @@ public final class MemoryMCPServer {
     kept as Markdown notes the user also reads in Obsidian. Inside AgentWorld, the team_* \
     tools show the other agents working in the same project and let you message them. Notes belong to the \
     current project or are global (about the user, for every project). \
+    When the user asks you to remember something, memory_write it here too (not only in a \
+    memory of your own), or the other CLIs won't know it; when asked about the user or the \
+    project, memory_search before saying you don't know. \
     Before starting non-trivial work, memory_search for the topic: another agent may \
     already know the answer. When you learn something a future agent would need \
     (a decision and why, how to run or test the project, a gotcha, a user \

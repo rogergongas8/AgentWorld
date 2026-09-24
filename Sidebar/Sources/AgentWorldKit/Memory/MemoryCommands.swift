@@ -8,11 +8,18 @@ public struct MemoryCommands {
     public let project: String
     /// Who is writing: claude, codex, gemini…, or "you".
     public let agent: String?
+    /// What the CLIs remember on their own for this folder (read-only).
+    let native: [MemoryNote]
 
-    public init(vault: MemoryVault, folder: String, agent: String?) {
+    public init(vault: MemoryVault, folder: String, agent: String?, includesNative: Bool = true) {
         self.vault = vault
         self.project = MemoryVault.scope(for: folder)
         self.agent = agent
+        self.native = includesNative ? NativeMemories.notes(forFolder: folder) : []
+    }
+
+    private func native(in scopes: [String]?) -> [MemoryNote] {
+        scopes.map { scopes in native.filter { scopes.contains($0.scope) } } ?? native
     }
 
     public struct Result {
@@ -60,7 +67,7 @@ public struct MemoryCommands {
     // MARK: - Commands
 
     public func list(scope: String? = nil) -> Result {
-        let notes = vault.notes(in: scopes(scope))
+        let notes = vault.notes(in: scopes(scope)) + native(in: scopes(scope))
         guard !notes.isEmpty else {
             return Result(ok: true, output: "No notes yet for \(project). Write one with `agentworld-ctl memory write <name> …`.")
         }
@@ -69,7 +76,7 @@ public struct MemoryCommands {
 
     public func search(_ query: String, scope: String? = nil) -> Result {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return list(scope: scope) }
-        let found = vault.search(query, in: scopes(scope))
+        let found = vault.search(query, in: scopes(scope)) + MemoryVault.rank(native(in: scopes(scope)), by: query)
         guard !found.isEmpty else {
             let elsewhere = scope == "all" ? [] : vault.search(query, in: nil)
             return Result(ok: true, output: "Nothing about \"\(query)\" in \(scopeNames(scope))."
@@ -79,7 +86,8 @@ public struct MemoryCommands {
     }
 
     public func read(_ name: String) -> Result {
-        guard let note = vault.note(named: name, preferring: project) else {
+        let own = native.first { $0.id == name || $0.name == MemoryVault.slug(name) || "\($0.source ?? ""):\($0.name)" == name }
+        guard let note = vault.note(named: name, preferring: project) ?? own else {
             let near = vault.search(name.replacingOccurrences(of: "-", with: " "), in: nil).prefix(5).map(\.id)
             return Result(ok: false, output: "No note called \(name)." + (near.isEmpty ? "" : " Close: " + near.joined(separator: ", ")))
         }
@@ -91,6 +99,7 @@ public struct MemoryCommands {
         facts.append("updated " + Self.relative(note.updated))
         if let kind = note.kind { facts.append(kind) }
         if !note.tags.isEmpty { facts.append("tags: " + note.tags.joined(separator: ", ")) }
+        if let source = note.source { facts.append("from \(source)'s own memory, read-only: copy it into the shared memory to change it") }
         header += "(" + facts.joined(separator: " · ") + ")\n\n"
         return Result(ok: true, output: header + note.body)
     }
@@ -184,7 +193,7 @@ public struct MemoryCommands {
         for scope in order {
             let title = scope == MemoryVault.globalScope ? "global (every project)" : scope
             let lines = byScope[scope, default: []].map { note -> String in
-                var line = "  \(note.name)" + (note.kind.map { " (\($0))" } ?? "") + " — \(note.description)"
+                var line = "  \(note.source.map { "\($0):" } ?? "")\(note.name)" + (note.kind.map { " (\($0))" } ?? "") + " — \(note.description)"
                 let who = note.agents.first.map { "\($0), " } ?? ""
                 line += "  [\(who)\(Self.relative(note.updated))]"
                 if let query, let snippet = MemoryVault.snippet(of: note, for: query), snippet != note.description {

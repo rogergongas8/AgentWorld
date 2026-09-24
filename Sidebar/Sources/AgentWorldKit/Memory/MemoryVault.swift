@@ -17,8 +17,12 @@ public struct MemoryNote: Identifiable, Hashable, Sendable {
     public var updated: Date
     public var body: String
     public var url: URL
+    /// Nil for the shared vault's notes; "claude" or "gemini" for what that
+    /// CLI remembers on its own (read-only, see `NativeMemories`).
+    public var source: String? = nil
 
-    public var id: String { scope + "/" + name }
+    public var id: String { (source.map { $0 + ":" } ?? "") + scope + "/" + name }
+    public var isReadOnly: Bool { source != nil }
     public var isGlobal: Bool { scope == MemoryVault.globalScope }
 
     /// The notes it links to with `[[wikilinks]]` (Obsidian's syntax).
@@ -164,10 +168,24 @@ public struct MemoryVault: Sendable {
     /// Notes matching every word of `query` (in the name, tags, description
     /// or text), the best first: name and tags count most.
     public func search(_ query: String, in scopes: [String]? = nil) -> [MemoryNote] {
-        let words = query.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        guard !words.isEmpty else { return notes(in: scopes) }
-        let scored = notes(in: scopes).compactMap { note -> (MemoryNote, Int)? in
-            let name = note.name.lowercased()
+        Self.rank(notes(in: scopes), by: query)
+    }
+
+    /// `notes` matching every word of `query`, the best first.
+    public static func rank(_ notes: [MemoryNote], by query: String) -> [MemoryNote] {
+        let words = query.lowercased().split(whereSeparator: { $0.isWhitespace || $0.isPunctuation }).map(String.init)
+        guard !words.isEmpty else { return notes }
+        let strict = score(notes, words, needsAll: true)
+        if !strict.isEmpty { return strict }
+        // Nothing has every word: any of them, by stem too, so "favorito"
+        // finds "favorite" (agents write in one language, ask in another).
+        let stems = words.filter { $0.count >= 4 }.map { String($0.prefix(max(4, Int((Double($0.count) * 0.6).rounded(.up))))) }
+        return score(notes, Array(Set(words + stems)), needsAll: false)
+    }
+
+    private static func score(_ notes: [MemoryNote], _ words: [String], needsAll: Bool) -> [MemoryNote] {
+        let scored = notes.compactMap { note -> (MemoryNote, Int)? in
+            let name = note.name.lowercased().replacingOccurrences(of: "-", with: " ")
             let tags = note.tags.joined(separator: " ").lowercased()
             let description = note.description.lowercased()
             let body = note.body.lowercased()
@@ -175,10 +193,12 @@ public struct MemoryVault: Sendable {
             for word in words {
                 let inName = name.contains(word), inTags = tags.contains(word), inDescription = description.contains(word)
                 let inBody = body.components(separatedBy: word).count - 1
-                guard inName || inTags || inDescription || inBody > 0 else { return nil }
+                guard inName || inTags || inDescription || inBody > 0 else {
+                    if needsAll { return nil } else { continue }
+                }
                 score += (inName ? 6 : 0) + (inTags ? 4 : 0) + (inDescription ? 3 : 0) + min(inBody, 5)
             }
-            return (note, score)
+            return score > 0 ? (note, score) : nil
         }
         return scored.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.updated > $1.0.updated }.map(\.0)
     }

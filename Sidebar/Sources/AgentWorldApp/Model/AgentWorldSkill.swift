@@ -72,6 +72,10 @@ enum AgentWorldSkill {
     agentworld-ctl memory-show deploy              # show the user that note
     ```
 
+    - **"Remember this"** from the user: write it here too, not only in a
+      memory of your own, or the other CLIs won't know it. Asked something
+      about the user or the project you don't know: search here first
+      (searches also read Claude's and Gemini's own memories).
     - **Before** non-trivial work, search for the topic: another agent (maybe
       another CLI) may already know how to run, test or deploy this project.
     - **Write** when you learn what a future agent would need: a decision and
