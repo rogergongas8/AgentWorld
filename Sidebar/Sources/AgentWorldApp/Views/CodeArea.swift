@@ -342,6 +342,8 @@ struct SessionPane: View {
             ZStack {
                 Palette.terminalBackground
                 TerminalHost(view: session.terminal)
+                    // Its own identity: a reused host would keep showing the previous tab's terminal.
+                    .id(session.id)
                     .padding(.leading, 10)
                     .padding(.top, 6)
                 if case .exited = session.health {

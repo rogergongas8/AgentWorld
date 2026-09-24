@@ -217,6 +217,8 @@ struct TilePane: View {
             ZStack {
                 Palette.terminalBackground
                 TerminalHost(view: session.terminal)
+                    // Its own identity: a reused host would keep showing the previous tab's terminal.
+                    .id(session.id)
                     .padding(.leading, 8)
                     .padding(.top, 4)
                 if case .exited = session.health {

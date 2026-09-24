@@ -147,6 +147,26 @@ enum DebugControl {
             case "keys":
                 // keys down down return | esc | u… : fed to the key router like real presses.
                 for name in argument.split(separator: " ").map(String.init) { press(name, model: model) }
+            case "cmd":
+                // cmd <key>: a real ⌘-key press sent through the app, as the keyboard would
+                // (menus and SwiftUI shortcuts, then the focused view).
+                let window = NSApp.keyWindow ?? NSApp.windows.first { $0.isVisible && $0.contentView != nil }
+                NSApp.activate(ignoringOtherApps: true)
+                window?.makeKeyAndOrderFront(nil)
+                for type in [NSEvent.EventType.keyDown, .keyUp] {
+                    if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: window?.windowNumber ?? 0, context: nil, characters: argument,
+                                                    charactersIgnoringModifiers: argument, isARepeat: false,
+                                                    keyCode: argument.first.flatMap { Self.digitKeyCodes[$0] } ?? 0) {
+                        NSApp.postEvent(event, atStart: false)
+                    }
+                }
+            case "state":
+                // state <file>: which tab is selected and which view has the keys.
+                let tabs = model.tabs(in: model.selectedFolder)
+                let line = "selected=\(tabs.firstIndex { $0.id == model.selectedTabID }.map { $0 + 1 } ?? 0)/\(tabs.count) "
+                    + "launcher=\(model.showsLauncher) responder=\(String(describing: NSApp.keyWindow?.firstResponder.map { type(of: $0) }))\n"
+                try? line.write(toFile: argument, atomically: true, encoding: .utf8)
             case "panel": if argument == "on" { model.enterPanel() } else { model.leavePanel() }
             case "shortcuts": model.showsShortcuts = argument != "off"
             case "type":
@@ -155,6 +175,8 @@ enum DebugControl {
             }
         }
     }
+
+    static let digitKeyCodes: [Character: UInt16] = ["1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28, "9": 25]
 
     private static func press(_ name: String, model: AppModel) {
         let codes: [String: (UInt16, String)] = [
