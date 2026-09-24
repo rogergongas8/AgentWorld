@@ -150,6 +150,9 @@ final class AppModel: ObservableObject {
                 if Preferences.shared.connectsMemory, ProcessInfo.processInfo.environment["AGENTWORLD_DEBUG_CONTROL"] == nil {
                     self.connectMemoryEverywhere()
                 }
+                if Preferences.shared.teachesMemory, ProcessInfo.processInfo.environment["AGENTWORLD_DEBUG_CONTROL"] == nil {
+                    MemoryInstructions.installAll()
+                }
             }
         }
         installKeyRouter()

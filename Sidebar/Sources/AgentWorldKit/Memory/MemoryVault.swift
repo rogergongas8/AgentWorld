@@ -8,6 +8,8 @@ public struct MemoryNote: Identifiable, Hashable, Sendable {
     /// `global`, or the project it belongs to (the folder's name).
     public var scope: String
     public var description: String
+    /// What sort of knowledge it is (see `MemoryVault.kinds`), if said.
+    public var kind: String?
     /// Who wrote it, latest first (claude, codex, gemini…, "you").
     public var agents: [String]
     public var tags: [String]
@@ -41,6 +43,22 @@ public struct MemoryNote: Identifiable, Hashable, Sendable {
 public struct MemoryVault: Sendable {
     public static let globalScope = "global"
     static let indexName = "index"
+
+    /// The sorts of knowledge a project's notes are grouped by, in order.
+    public static let kinds: [(id: String, title: String, meaning: String)] = [
+        ("context", "Context", "what the project is, how it's laid out"),
+        ("howto", "How to", "build, test, run, deploy, release"),
+        ("decision", "Decisions", "a choice made and why"),
+        ("gotcha", "Gotchas", "traps, surprises, things that break"),
+        ("preference", "Preferences", "how the user likes things done"),
+    ]
+
+    /// A kind as given by an agent ("how-to", "Decisions"…), or nil if unknown.
+    public static func kind(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let plain = text.lowercased().filter(\.isLetter)
+        return kinds.first { plain == $0.id || plain == $0.id + "s" || plain == $0.title.lowercased().filter(\.isLetter) }?.id
+    }
 
     public let root: URL
 
@@ -195,7 +213,8 @@ public struct MemoryVault: Sendable {
     /// Keeps who wrote it, when, and the scope's index.
     @discardableResult
     public func write(name rawName: String, body rawBody: String, scope rawScope: String, description: String? = nil,
-                      tags: [String] = [], agent: String? = nil, append: Bool = false, now: Date = Date()) throws -> MemoryNote {
+                      kind: String? = nil, tags: [String] = [], agent: String? = nil, append: Bool = false,
+                      now: Date = Date()) throws -> MemoryNote {
         let name = Self.slug(rawName.hasSuffix(".md") ? String(rawName.dropLast(3)) : rawName)
         let scope = Self.slug(rawScope).isEmpty ? Self.globalScope : Self.slug(rawScope)
         guard !name.isEmpty, name != Self.indexName else { throw Failure.badName }
@@ -207,13 +226,16 @@ public struct MemoryVault: Sendable {
             let url = file(name, in: scope)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let existing = Self.load(url, scope: scope)
-            var note = existing ?? MemoryNote(name: name, scope: scope, description: "", agents: [], tags: [], created: now,
-                                              updated: now, body: "", url: url)
+            // A description someone wrote on purpose (not just the first line) outlives a rewrite.
+            let chosenDescription = existing.map { $0.description != Self.summary(of: $0.body) } ?? false
+            var note = existing ?? MemoryNote(name: name, scope: scope, description: "", kind: nil, agents: [], tags: [],
+                                              created: now, updated: now, body: "", url: url)
+            if let kind = Self.kind(kind) { note.kind = kind }
             note.body = append && existing != nil ? note.body.trimmingCharacters(in: .whitespacesAndNewlines) + "\n\n" + body : body
             note.updated = now
             if let description, !description.trimmingCharacters(in: .whitespaces).isEmpty {
                 note.description = description.trimmingCharacters(in: .whitespacesAndNewlines)
-            } else if note.description.isEmpty || !append {
+            } else if note.description.isEmpty || (!append && !chosenDescription) {
                 note.description = Self.summary(of: note.body)
             }
             for tag in tags.map({ Self.slug($0) }) where !tag.isEmpty && !note.tags.contains(tag) { note.tags.append(tag) }
@@ -270,7 +292,13 @@ public struct MemoryVault: Sendable {
         let notes = self.notes(in: [scope]).sorted { $0.name < $1.name }
         let title = scope == Self.globalScope ? "Global memory" : "Memory: \(scope)"
         var lines = ["# \(title)", "", "<!-- Kept by AgentWorld: rewritten whenever a note changes. -->", ""]
-        lines += notes.isEmpty ? ["No notes yet."] : notes.map { "- [[\($0.name)]] — \($0.description)" }
+        if notes.isEmpty { lines.append("No notes yet.") }
+        // Grouped by kind, the ones without a kind last.
+        for (id, heading) in Self.kinds.map({ ($0.id as String?, $0.title) }) + [(nil, "Other")] {
+            let group = notes.filter { $0.kind == id }
+            guard !group.isEmpty else { continue }
+            lines += ["## \(heading)", ""] + group.map { "- [[\($0.name)]] — \($0.description)" } + [""]
+        }
         let url = root.appendingPathComponent(scope, isDirectory: true).appendingPathComponent(Self.indexName + ".md")
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
@@ -303,6 +331,7 @@ public struct MemoryVault: Sendable {
             name: url.deletingPathExtension().lastPathComponent,
             scope: scope,
             description: front["description"] ?? summary(of: body),
+            kind: kind(front["kind"]),
             agents: agents,
             tags: front.list("tags"),
             created: front["created"].flatMap(date),
@@ -315,6 +344,7 @@ public struct MemoryVault: Sendable {
 
     static func render(_ note: MemoryNote) -> String {
         var lines = ["---", "description: \(yamlString(note.description))"]
+        if let kind = note.kind { lines.append("kind: \(kind)") }
         if !note.agents.isEmpty { lines.append("agents: [\(note.agents.joined(separator: ", "))]") }
         if !note.tags.isEmpty { lines.append("tags: [\(note.tags.joined(separator: ", "))]") }
         if let created = note.created { lines.append("created: \(stamp(created))") }

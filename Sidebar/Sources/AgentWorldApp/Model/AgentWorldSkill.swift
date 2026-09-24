@@ -63,7 +63,7 @@ enum AgentWorldSkill {
     agentworld-ctl memory                          # this project's notes + global ones
     agentworld-ctl memory search deploy staging    # notes with all these words
     agentworld-ctl memory read deploy              # one note
-    agentworld-ctl memory write deploy --description "How to deploy" --tags ops <<'EOF'
+    agentworld-ctl memory write deploy --kind howto --description "How to deploy" --tags ops <<'EOF'
     Deploy with `make release`; staging first. See [[release-checklist]].
     EOF
     agentworld-ctl memory write deploy --append "Staging needs VPN since 2026-09."
@@ -76,7 +76,8 @@ enum AgentWorldSkill {
       another CLI) may already know how to run, test or deploy this project.
     - **Write** when you learn what a future agent would need: a decision and
       why, how to build/test/run, a gotcha, a user preference. One fact or
-      topic per note, a short-kebab-case name, a one-line description.
+      topic per note, a short-kebab-case name, a one-line description, and a
+      `--kind`: context, howto, decision, gotcha or preference.
     - Update (`--append`, or rewrite) instead of adding near-copies; delete
       notes that turn out wrong. Link related notes with `[[name]]`.
     - Never store secrets, or what the code or git history already records.

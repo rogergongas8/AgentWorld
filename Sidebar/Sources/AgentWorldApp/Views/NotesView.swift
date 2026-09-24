@@ -14,6 +14,7 @@ struct NotesView: View {
     @State private var editing = false
     @State private var draft = ""
     @State private var draftDescription = ""
+    @State private var draftKind = ""
     /// A note being created: its name and scope, until it's saved.
     @State private var creating: (name: String, scope: String)?
     @State private var newName = ""
@@ -178,9 +179,18 @@ struct NotesView: View {
                             .padding(.horizontal, 8)
                             .padding(.top, 8)
                             .padding(.bottom, 2)
-                        ForEach(group.notes) { note in
-                            NoteRow(note: note, selected: note.id == model.openNoteID) { select(note.id) }
-                                .id(note.id)
+                        ForEach(Self.byKind(group.notes), id: \.title) { kind in
+                            if kind.title != nil || group.notes.contains(where: { $0.kind != nil }) {
+                                Text(kind.title ?? "Other")
+                                    .font(.mono(9.5))
+                                    .foregroundStyle(Palette.faint)
+                                    .padding(.horizontal, 8)
+                                    .padding(.top, 4)
+                            }
+                            ForEach(kind.notes) { note in
+                                NoteRow(note: note, selected: note.id == model.openNoteID) { select(note.id) }
+                                    .id(note.id)
+                            }
                         }
                     }
                 }
@@ -204,6 +214,16 @@ struct NotesView: View {
         let here = model.memoryScope
         order.sort { rank($0, here) < rank($1, here) }
         return order.map { ($0, byScope[$0] ?? []) }
+    }
+
+    /// A scope's notes by kind, in `MemoryVault.kinds` order, unsorted ones last.
+    static func byKind(_ notes: [MemoryNote]) -> [(title: String?, notes: [MemoryNote])] {
+        let known = MemoryVault.kinds.compactMap { kind -> (String?, [MemoryNote])? in
+            let group = notes.filter { $0.kind == kind.id }
+            return group.isEmpty ? nil : (kind.title, group)
+        }
+        let other = notes.filter { $0.kind == nil }
+        return known + (other.isEmpty ? [] : [(nil, other)])
     }
 
     private func rank(_ scope: String, _ here: String) -> Int {
@@ -256,6 +276,12 @@ struct NotesView: View {
                 Button("Save") { save() }.keyboardShortcut("s", modifiers: .command)
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            Picker("Kind", selection: $draftKind) {
+                Text("No kind").tag("")
+                ForEach(MemoryVault.kinds, id: \.id) { kind in Text(kind.title + " — " + kind.meaning).tag(kind.id) }
+            }
+            .font(.mono(11.5))
+            .frame(maxWidth: 420, alignment: .leading)
             TextField("One line: what this note is about (optional)", text: $draftDescription)
                 .textFieldStyle(.plain)
                 .font(.mono(11.5))
@@ -281,6 +307,7 @@ struct NotesView: View {
         creating = (name, model.memoryScope)
         draft = ""
         draftDescription = ""
+        draftKind = ""
         mode = "note"
         editing = true
     }
@@ -288,6 +315,7 @@ struct NotesView: View {
     private func startEditing(_ note: MemoryNote) {
         creating = nil
         draft = note.body
+        draftKind = note.kind ?? ""
         draftDescription = MemoryVault.firstLine(of: note.description) == MemoryVault.firstLine(of: note.body) ? "" : note.description
         editing = true
     }
@@ -302,7 +330,8 @@ struct NotesView: View {
         guard let (name, scope) = target else { return }
         do {
             let note = try model.memoryVault.write(name: name, body: draft, scope: scope,
-                                                   description: draftDescription.isEmpty ? nil : draftDescription, agent: "you")
+                                                   description: draftDescription.isEmpty ? nil : draftDescription,
+                                                   kind: draftKind.isEmpty ? nil : draftKind, agent: "you")
             editing = false
             creating = nil
             message = nil
@@ -334,6 +363,9 @@ struct NotesView: View {
                         .font(.mono(10)).foregroundStyle(Palette.muted)
                     Text(note.isGlobal ? "global · every project" : "project · \(note.scope)")
                         .font(.mono(10)).foregroundStyle(Palette.muted)
+                    if let kind = MemoryVault.kinds.first(where: { $0.id == note.kind }) {
+                        Text(kind.title + " · " + kind.meaning).font(.mono(10)).foregroundStyle(Palette.muted)
+                    }
                 }
                 if !note.tags.isEmpty {
                     section("Tags") {

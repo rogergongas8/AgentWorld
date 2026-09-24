@@ -360,6 +360,7 @@ struct MemorySettings: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject private var preferences = Preferences.shared
     @State private var status = MemoryMCP.status()
+    @State private var instructions = MemoryInstructions.status()
     @State private var working = false
 
     var body: some View {
@@ -413,16 +414,26 @@ struct MemorySettings: View {
                         Text("~/" + entry.target.file).font(.caption.monospaced())
                     }
                 }
+                Toggle("Tell every CLI to use it, in its global instructions", isOn: $preferences.teachesMemory)
+                    .onChange(of: preferences.teachesMemory) { _ in instructions = MemoryInstructions.status() }
+                ForEach(instructions, id: \.target.provider.id) { entry in
+                    LabeledContent {
+                        Text(entry.installed ? "added" : "not added").foregroundStyle(entry.installed ? Color.green : .secondary)
+                    } label: {
+                        Text(entry.target.provider.name)
+                        Text("~/" + entry.target.file).font(.caption.monospaced())
+                    }
+                }
             } header: {
                 Text("Agents using it")
             } footer: {
-                Text("Adds an MCP server named agentworld-memory (agentworld-ctl mcp) to each CLI's own config, so it gets memory_search, memory_read, memory_write… tools. Every CLI can also use agentworld-ctl memory from its shell, as the agentworld skill explains.")
+                Text("Adds an MCP server named agentworld-memory (agentworld-ctl mcp) to each CLI's own config, so it gets memory_search, memory_read, memory_write… tools. The instructions are a short marked block in the file each CLI reads every session (search before a task, write what it learns); the rest of those files is never touched. Kimi, Grok and Cursor have no global file: they get the MCP tools and the skill.")
                     .settingsFootnote()
             }
         }
         .formStyle(.grouped)
-        .frame(height: 460)
-        .onAppear { status = MemoryMCP.status(); model.refreshMemory() }
+        .frame(height: 560)
+        .onAppear { status = MemoryMCP.status(); instructions = MemoryInstructions.status(); model.refreshMemory() }
     }
 
     /// Runs a change to the CLIs' configs off the main thread, then rereads their status.

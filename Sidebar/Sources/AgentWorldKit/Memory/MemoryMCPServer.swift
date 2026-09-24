@@ -28,7 +28,7 @@ public final class MemoryMCPServer {
     already know the answer. When you learn something a future agent would need \
     (a decision and why, how to run or test the project, a gotcha, a user \
     preference), write it: one fact or topic per note, a clear name, a one-line \
-    description. Update or delete notes that turn out wrong instead of adding near-copies. \
+    description and its kind (context, howto, decision, gotcha, preference). Update or delete notes that turn out wrong instead of adding near-copies. \
     Don't store secrets, or what the code or git history already records.
     """
 
@@ -99,7 +99,7 @@ public final class MemoryMCPServer {
         case "memory_write":
             let tags = (arguments["tags"] as? [String]) ?? string("tags")?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
             outcome = commands.write(name: string("name") ?? "", body: string("content") ?? "",
-                                     global: arguments["global"] as? Bool ?? false, description: string("description"),
+                                     global: arguments["global"] as? Bool ?? false, description: string("description"), kind: string("kind"),
                                      tags: tags, append: arguments["append"] as? Bool ?? false)
         case "memory_delete":
             outcome = commands.delete(string("name") ?? "")
@@ -142,6 +142,8 @@ public final class MemoryMCPServer {
                     "name": ["type": "string", "description": "short-kebab-case name"],
                     "content": ["type": "string", "description": "Markdown text of the note"],
                     "description": ["type": "string", "description": "one line: what the note is about"],
+                    "kind": ["type": "string", "enum": MemoryVault.kinds.map(\.id),
+                             "description": MemoryVault.kinds.map { "\($0.id): \($0.meaning)" }.joined(separator: "; ")],
                     "tags": ["type": "array", "items": ["type": "string"]],
                     "global": ["type": "boolean", "description": "true for every project (facts about the user); default: this project"],
                     "append": ["type": "boolean", "description": "add to the end of the note instead of replacing it"],

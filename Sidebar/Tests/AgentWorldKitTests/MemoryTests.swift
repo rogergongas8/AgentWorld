@@ -78,6 +78,30 @@ import Testing
         #expect(throws: MemoryVault.Failure.self) { try vault.write(name: "!!", body: "x", scope: "p") }
     }
 
+    @Test func kindsAreKeptAndGroupTheIndex() throws {
+        let vault = try vault()
+        defer { try? FileManager.default.removeItem(at: vault.root) }
+        #expect(MemoryVault.kind("How-to") == "howto")
+        #expect(MemoryVault.kind("Decisions") == "decision")
+        #expect(MemoryVault.kind("whatever") == nil)
+        try vault.write(name: "deploy", body: "make release", scope: "p", kind: "howto")
+        try vault.write(name: "why-swift", body: "Native app.", scope: "p", kind: "decision")
+        try vault.write(name: "loose", body: "Something.", scope: "p")
+        // Rewriting without a kind keeps the one it had.
+        try vault.write(name: "deploy", body: "make release", scope: "p", description: "How to deploy")
+        let rewritten = try vault.write(name: "deploy", body: "make release, then tag", scope: "p")
+        #expect(rewritten.kind == "howto")
+        #expect(rewritten.description == "How to deploy")
+        #expect(vault.note(named: "p/deploy")?.kind == "howto")
+        let index = try String(contentsOf: vault.root.appendingPathComponent("p/index.md"), encoding: .utf8)
+        let howTo = try #require(index.range(of: "## How to"))
+        let decisions = try #require(index.range(of: "## Decisions"))
+        let other = try #require(index.range(of: "## Other"))
+        #expect(howTo.lowerBound < decisions.lowerBound && decisions.lowerBound < other.lowerBound)
+        let commands = MemoryCommands(vault: vault, folder: "/tmp/p", agent: "codex")
+        #expect(!commands.run(["write", "x", "--kind", "nonsense", "text"], stdin: { nil }).ok)
+    }
+
     @Test func slugsAndScopes() throws {
         #expect(MemoryVault.slug("How to Run: Tests!") == "how-to-run-tests")
         #expect(MemoryVault.slug("../escape") == "escape")

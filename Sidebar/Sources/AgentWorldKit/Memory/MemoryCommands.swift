@@ -32,6 +32,7 @@ public struct MemoryCommands {
           --append                    add to the end instead of replacing
           --global                    for every project (default: this project)
           --description TEXT          one line: what the note is about
+          --kind KIND                 context, howto, decision, gotcha or preference
           --tags a,b                  a few words to find it by
       memory delete <name>            remove a note that's wrong or no longer true
       memory path                     where the vault lives (an Obsidian vault)
@@ -82,18 +83,22 @@ public struct MemoryCommands {
         var facts: [String] = []
         if !note.agents.isEmpty { facts.append("by " + note.agents.joined(separator: ", ")) }
         facts.append("updated " + Self.relative(note.updated))
+        if let kind = note.kind { facts.append(kind) }
         if !note.tags.isEmpty { facts.append("tags: " + note.tags.joined(separator: ", ")) }
         header += "(" + facts.joined(separator: " · ") + ")\n\n"
         return Result(ok: true, output: header + note.body)
     }
 
     public func write(name: String, body: String, global: Bool = false, description: String? = nil,
-                      tags: [String] = [], append: Bool = false) -> Result {
+                      kind: String? = nil, tags: [String] = [], append: Bool = false) -> Result {
+        if let kind, MemoryVault.kind(kind) == nil {
+            return Result(ok: false, output: "unknown kind \(kind): use " + MemoryVault.kinds.map(\.id).joined(separator: ", "))
+        }
         do {
             let existed = vault.note(named: name, preferring: global ? MemoryVault.globalScope : project)
                 .map { $0.scope == (global ? MemoryVault.globalScope : project) } ?? false
             let note = try vault.write(name: name, body: body, scope: global ? MemoryVault.globalScope : project,
-                                       description: description, tags: tags, agent: agent, append: append)
+                                       description: description, kind: kind, tags: tags, agent: agent, append: append)
             let verb = append && existed ? "added to" : existed ? "replaced" : "saved"
             return Result(ok: true, output: "\(verb) \(note.id) — \(note.description)", changed: note)
         } catch {
@@ -144,11 +149,12 @@ public struct MemoryCommands {
             let global = flag("--global")
             let append = flag("--append")
             let description = option("--description")
+            let kind = option("--kind")
             let tags = option("--tags")?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
             guard !args.isEmpty else { return Result(ok: false, output: "usage: memory write <name> [text…] (or the text on stdin)") }
             let name = args.removeFirst()
             let text = args.isEmpty || args == ["-"] ? stdin() ?? "" : args.joined(separator: " ")
-            return write(name: name, body: text, global: global, description: description, tags: tags, append: append)
+            return write(name: name, body: text, global: global, description: description, kind: kind, tags: tags, append: append)
         case "delete", "rm", "forget":
             guard let name = args.first else { return Result(ok: false, output: "usage: memory delete <name>") }
             return delete(name)
@@ -172,7 +178,7 @@ public struct MemoryCommands {
         for scope in order {
             let title = scope == MemoryVault.globalScope ? "global (every project)" : scope
             let lines = byScope[scope, default: []].map { note -> String in
-                var line = "  \(note.name) — \(note.description)"
+                var line = "  \(note.name)" + (note.kind.map { " (\($0))" } ?? "") + " — \(note.description)"
                 let who = note.agents.first.map { "\($0), " } ?? ""
                 line += "  [\(who)\(Self.relative(note.updated))]"
                 if let query, let snippet = MemoryVault.snippet(of: note, for: query), snippet != note.description {

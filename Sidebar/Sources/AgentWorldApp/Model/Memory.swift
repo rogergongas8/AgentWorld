@@ -299,3 +299,104 @@ enum MemoryMCP {
         process.waitUntilExit()
     }
 }
+
+// MARK: - Always-on instructions
+
+/// A short block in each CLI's global instructions file (the one it reads
+/// in every session), so agents use the memory without being asked: search
+/// before a task, write what they learn. Between markers, so it can be
+/// updated or removed without touching the rest of the file.
+enum MemoryInstructions {
+    static let start = "<!-- agentworld-memory:start — added by AgentWorld; turn off in Settings › Memory -->"
+    static let end = "<!-- agentworld-memory:end -->"
+
+    static let text = """
+    ## Shared memory (AgentWorld)
+
+    You share a memory with the user's other agent CLIs (Claude Code, Codex,
+    Gemini…): Markdown notes per project, plus global ones about the user.
+    Use the `agentworld-memory` MCP tools (memory_search, memory_read,
+    memory_write…) if you have them, else `agentworld-ctl memory` in the shell.
+
+    - Before non-trivial work in a project, search the memory for the topic.
+    - When you learn something another agent would need (how to build, test
+      or run it; a decision and why; a gotcha; a user preference), write it:
+      one topic per note, a clear name, a one-line description, and its kind
+      (decision, howto, gotcha, context or preference).
+    - Update or delete notes that turn out wrong. No secrets, and nothing the
+      code or git history already records.
+    """
+
+    struct Target {
+        let provider: Provider
+        /// The CLI's config folder under home; set up when it exists.
+        let home: String
+        /// The global instructions file it reads every session.
+        let file: String
+        /// A file of its own (Kiro's steering) instead of a block in a shared one.
+        var ownFile = false
+    }
+
+    static let targets: [Target] = [
+        Target(provider: .claude, home: ".claude", file: ".claude/CLAUDE.md"),
+        Target(provider: .codex, home: ".codex", file: ".codex/AGENTS.md"),
+        Target(provider: .gemini, home: ".gemini", file: ".gemini/GEMINI.md"),
+        Target(provider: .opencode, home: ".config/opencode", file: ".config/opencode/AGENTS.md"),
+        Target(provider: .kiro, home: ".kiro", file: ".kiro/steering/agentworld-memory.md", ownFile: true),
+    ]
+
+    private static var home: URL { FileManager.default.homeDirectoryForCurrentUser }
+
+    static func status() -> [(target: Target, installed: Bool)] {
+        targets.filter { FileManager.default.fileExists(atPath: home.appendingPathComponent($0.home).path) }.map { target in
+            let text = try? String(contentsOf: home.appendingPathComponent(target.file), encoding: .utf8)
+            return (target, text?.contains(start) == true)
+        }
+    }
+
+    static func installAll() {
+        for (target, _) in status() { install(target) }
+    }
+
+    static func uninstallAll() {
+        for (target, installed) in status() where installed { uninstall(target) }
+    }
+
+    static func install(_ target: Target) {
+        let url = home.appendingPathComponent(target.file)
+        let block = start + "\n" + text + "\n" + end + "\n"
+        let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        let next: String
+        if target.ownFile {
+            next = block
+        } else if let range = blockRange(in: existing) {
+            next = existing.replacingCharacters(in: range, with: block)
+        } else {
+            let trimmed = existing.trimmingCharacters(in: .newlines)
+            next = trimmed.isEmpty ? block : trimmed + "\n\n" + block
+        }
+        guard next != existing else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? next.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    static func uninstall(_ target: Target) {
+        let url = home.appendingPathComponent(target.file)
+        if target.ownFile {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        guard let existing = try? String(contentsOf: url, encoding: .utf8), let range = blockRange(in: existing) else { return }
+        var next = existing
+        next.removeSubrange(range)
+        next = next.trimmingCharacters(in: .newlines)
+        try? (next.isEmpty ? "" : next + "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// From the start marker to the end marker and its newline.
+    private static func blockRange(in text: String) -> Range<String.Index>? {
+        guard let open = text.range(of: start), let close = text.range(of: end, range: open.upperBound..<text.endIndex) else { return nil }
+        let after = text[close.upperBound...].first == "\n" ? text.index(after: close.upperBound) : close.upperBound
+        return open.lowerBound..<after
+    }
+}

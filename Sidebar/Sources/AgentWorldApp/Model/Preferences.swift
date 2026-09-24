@@ -63,6 +63,13 @@ final class Preferences: ObservableObject {
     }
     /// Keep the memory's MCP server registered with every CLI set up here.
     @Published var connectsMemory: Bool { didSet { defaults.set(connectsMemory, forKey: "connectsMemory") } }
+    /// Keep a short "use the shared memory" block in each CLI's global instructions.
+    @Published var teachesMemory: Bool {
+        didSet {
+            defaults.set(teachesMemory, forKey: "teachesMemory")
+            if teachesMemory { MemoryInstructions.installAll() } else { MemoryInstructions.uninstallAll() }
+        }
+    }
 
     /// Called when the terminal font or keys change, to restyle open terminals.
     var onTerminalLookChange: (() -> Void)?
@@ -84,6 +91,7 @@ final class Preferences: ObservableObject {
             "installsSkill": true,
             "memoryFolder": MemoryVault.defaultRoot.path,
             "connectsMemory": true,
+            "teachesMemory": true,
         ])
         projectsFolder = defaults.string(forKey: "projectsFolder") ?? Self.suggestedProjectsFolder
         confirmClosingBusy = defaults.bool(forKey: "confirmClosingBusy")
@@ -103,6 +111,7 @@ final class Preferences: ObservableObject {
         memoryFolder = ProcessInfo.processInfo.environment["AGENTWORLD_MEMORY"]
             ?? defaults.string(forKey: "memoryFolder") ?? MemoryVault.defaultRoot.path
         connectsMemory = defaults.bool(forKey: "connectsMemory")
+        teachesMemory = defaults.bool(forKey: "teachesMemory")
     }
 
     static var suggestedProjectsFolder: String {
