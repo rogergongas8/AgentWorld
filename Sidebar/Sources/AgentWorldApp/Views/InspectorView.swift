@@ -95,49 +95,65 @@ struct SectionBar: View {
     let provider: Provider
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(PanelNavigator.Section.allCases) { section in
-                let selected = panel.section == section
-                Button {
-                    panel.section = section
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(section.title)
-                        // Six sections share 340 points: counts on the one you're in,
-                        // or on all of them while searching, where they say where the matches are.
-                        if selected || !panel.query.isEmpty, let count = count(section) {
-                            Text("\(count)").font(.mono(9.5)).foregroundStyle(count == 0 && !panel.query.isEmpty ? Palette.faint.opacity(0.5) : Palette.faint)
+        HStack(spacing: 6) {
+            // The tabs scroll sideways when the panel is narrow, so the search and
+            // "+" buttons beside them are never pushed out of view (and "Crew" is
+            // never clipped at the edge). The selected tab is kept in view.
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 2) {
+                        ForEach(PanelNavigator.Section.allCases) { section in
+                            let selected = panel.section == section
+                            Button {
+                                panel.section = section
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(section.title)
+                                    // Counts on the tab you're in, or on all of them while
+                                    // searching, where they say where the matches are.
+                                    if selected || !panel.query.isEmpty, let count = count(section) {
+                                        Text("\(count)").font(.mono(9.5)).foregroundStyle(count == 0 && !panel.query.isEmpty ? Palette.faint.opacity(0.5) : Palette.faint)
+                                    }
+                                }
+                                .font(.mono(11, selected ? .semibold : .regular))
+                                .foregroundStyle(selected ? Palette.cream : Palette.muted)
+                                .fixedSize()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 5)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selected : .clear))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .id(section.rawValue)
+                            .help("\(section.title) (\(section.rawValue + 1) while the panel has the keys)")
                         }
                     }
-                    .font(.mono(11, selected ? .semibold : .regular))
-                    .foregroundStyle(selected ? Palette.cream : Palette.muted)
-                    .fixedSize()
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Palette.selected : .clear))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help("\(section.title) (\(section.rawValue + 1) while the panel has the keys)")
-            }
-            Spacer(minLength: 0)
-            ChromeButton(symbol: "magnifyingglass", active: panel.searching, help: "Search agents, skills and tools (⌘F, or / in the panel)") {
-                if panel.searching { panel.stopSearching() } else { model.searchPanel() }
-            }
-            if panel.section == .changes, model.changes[model.selectedFolder]?.files.isEmpty == false {
-                ChromeButton(symbol: "smallcircle.filled.circle", help: "Commit these changes (⌘⇧C)") { model.showsCommit = true }
-            }
-            if panel.section == .changes, let session, model.changes[model.selectedFolder]?.files.isEmpty == false {
-                ChromeButton(symbol: "checkmark.seal", help: "Ask \(session.label) to review these changes") {
-                    model.leavePanel()
-                    session.type("Review the uncommitted changes in this repository (git diff) and point out bugs or anything to fix before I commit.")
+                .onChange(of: panel.section) { section in
+                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(section.rawValue, anchor: .center) }
                 }
             }
-            if panel.section == .crew || panel.section == .skills, panel.query.isEmpty {
-                NewKitItemButton(kind: panel.section == .crew ? "agent" : "skill", session: session, provider: provider,
-                                 config: config, isPresented: $panel.creating)
+            HStack(spacing: 2) {
+                ChromeButton(symbol: "magnifyingglass", active: panel.searching, help: "Search agents, skills and tools (⌘F, or / in the panel)") {
+                    if panel.searching { panel.stopSearching() } else { model.searchPanel() }
+                }
+                if panel.section == .changes, model.changes[model.selectedFolder]?.files.isEmpty == false {
+                    ChromeButton(symbol: "smallcircle.filled.circle", help: "Commit these changes (⌘⇧C)") { model.showsCommit = true }
+                }
+                if panel.section == .changes, let session, model.changes[model.selectedFolder]?.files.isEmpty == false {
+                    ChromeButton(symbol: "checkmark.seal", help: "Ask \(session.label) to review these changes") {
+                        model.leavePanel()
+                        session.type("Review the uncommitted changes in this repository (git diff) and point out bugs or anything to fix before I commit.")
+                    }
+                }
+                if panel.section == .crew || panel.section == .skills, panel.query.isEmpty {
+                    NewKitItemButton(kind: panel.section == .crew ? "agent" : "skill", session: session, provider: provider,
+                                     config: config, isPresented: $panel.creating)
+                }
             }
+            .fixedSize()
         }
+        .frame(height: 30)
     }
 
     private func count(_ section: PanelNavigator.Section) -> Int? {

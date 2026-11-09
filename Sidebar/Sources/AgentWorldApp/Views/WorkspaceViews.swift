@@ -101,7 +101,9 @@ struct MakeItYours: View {
             Text("Make it yours")
                 .font(.mono(10.5, .semibold))
                 .foregroundStyle(Palette.cream)
-            HStack(alignment: .top, spacing: 10) {
+            // A grid, not a fixed row: in a narrow window the cards wrap onto
+            // the next line instead of being squeezed until the text breaks.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
                 card(symbol: "dock.rectangle", title: "Keep it in the Dock", done: inDock,
                      text: inDock ? "It's there: one click away." : "Right-click its Dock icon › Options › Keep in Dock.")
                 card(symbol: "power", title: "Open at login", done: preferences.canStartAtLogin && preferences.startsAtLogin,
@@ -131,6 +133,7 @@ struct MakeItYours: View {
                 Image(systemName: done ? "checkmark.circle.fill" : symbol)
                     .foregroundStyle(done ? Palette.live : Palette.claude)
                 Text(title).font(.mono(11.5, .semibold)).foregroundStyle(Palette.cream)
+                    .lineLimit(1).minimumScaleFactor(0.85)
                 Spacer(minLength: 4)
                 accessory()
             }
