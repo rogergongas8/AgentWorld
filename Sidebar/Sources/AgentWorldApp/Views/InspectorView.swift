@@ -68,7 +68,7 @@ struct InspectorView: View {
             if panel.section == .skills, case .skill(let skill) = item, isFirstOfCategory(skill, at: index, in: items) {
                 Text(skill.category.title)
                     .font(.mono(10, .semibold))
-                    .foregroundStyle(Color(rgb: skill.category.color))
+                    .foregroundStyle(Palette.muted)
                     .padding(.horizontal, 8)
                     .padding(.top, index == 0 ? 2 : 10)
                     .padding(.bottom, 2)

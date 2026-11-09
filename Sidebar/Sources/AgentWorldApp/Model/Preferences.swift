@@ -78,8 +78,10 @@ final class Preferences: ObservableObject {
         defaults.register(defaults: [
             "projectsFolder": Self.suggestedProjectsFolder,
             "confirmClosingBusy": true,
-            "showsLiveCrew": true,
-            "showsStories": true,
+            // Each session row already shows its character; the big live crew
+            // and the idle stories are opt-in so the window stays calm.
+            "showsLiveCrew": false,
+            "showsStories": false,
             "terminalFont": "",
             "terminalFontSize": 13.0,
             "optionAsMeta": false,

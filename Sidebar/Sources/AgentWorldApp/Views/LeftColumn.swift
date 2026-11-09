@@ -241,8 +241,9 @@ struct SessionRow: View {
             DispatchQueue.main.async { session.focus() }
         } label: {
             HStack(spacing: 8) {
-                FaceView(figure: session.provider.figure, scale: 1.6, busy: session.status.tone == .busy)
-                    .frame(width: 16, height: 10)
+                // The agent's face stays in the list: it is the "person" behind the row.
+                FaceView(figure: session.provider.figure, scale: 2.4, busy: session.status.tone == .busy)
+                    .frame(width: 26, height: 16)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(session.label)
                         .font(.mono(11.5, .medium))

@@ -30,10 +30,11 @@ public enum Icon {
     case command
     case repository
 
-    /// A stable per-name hue, so every skill's tome has its own color.
+    /// A stable per-name hue, so every skill still has its own color, kept
+    /// soft (low saturation) so a long list reads calmly instead of as a rainbow.
     public static func color(for name: String) -> RGB {
         let hash = CharacterLook.stableHash(name.lowercased())
-        return RGB.hsv(Double(hash % 1000) / 1000, 0.55, 0.85)
+        return RGB.hsv(Double(hash % 1000) / 1000, 0.32, 0.80)
     }
 
     public func render(t: TimeInterval) -> PixelCanvas {
