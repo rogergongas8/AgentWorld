@@ -1,11 +1,14 @@
 # AgentWorld
 
-**One macOS window for all your coding-agent CLIs, with a memory and a message board they share.**
+**A control room for your coding agents.** See each one as a person with its
+skills and tools, run up to nine in tiled real terminals, send one prompt to all
+of them, and let different CLIs share notes and messages.
 
 Run Claude Code, Codex, Gemini CLI, Kimi, Grok, OpenCode, Cursor Agent or Kiro
-side by side in real terminals. AgentWorld reads what each one already writes to
-disk, shows what every agent is doing, and lets different CLIs in the same
-project share notes and talk to each other.
+side by side. AgentWorld reads what each one already writes to disk to show what
+every agent is doing, what it can do (skills, MCP servers, plugins) and which
+files it touched, and lets different CLIs in the same project share notes and
+talk to each other.
 
 ![AgentWorld launcher](docs/screenshots/launcher.png)
 
@@ -32,7 +35,14 @@ happened. AgentWorld makes that a built-in feature instead of a habit:
   resume tab by tab.
 - **A panel per CLI** listing its agents, skills, commands, plugins and MCP
   servers, read from that CLI's own config folders.
-- **Pixel characters** that act out what each agent is doing, for the fun of it.
+- **Agents as people.** Each agent has a small pixel character that acts out
+  what it is doing, so you can tell at a glance who is working, who is waiting
+  for you and who is idle. The scene folds away with one click (or in Settings)
+  if you prefer a plain list.
+- **One prompt to all.** A bar under the tiled terminals sends the same prompt
+  to every agent in the tab, to compare how each one does it, and a few
+  built-in workflows (second opinion, build and review, divide and conquer) let
+  one agent drive the others.
 - **Token usage** by CLI, day and session (Claude Code, Codex, Gemini CLI).
 - **Project map**: your files as a graph of who uses whom, with live rings on
   what the agents are editing, and `agentworld-ctl map` so agents can ask for
