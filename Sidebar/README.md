@@ -70,7 +70,7 @@ Sources/
     Session/            transcript parsing, SessionStore, usage ledger
     Transcript/         session locating and tailing
     Git/                changes, diffs, commits, project files
-    Graph/              the project graph, clusters, layout, graphify import
+    Graph/              the project graph, clusters, layout
     Control/            the socket protocol agentworld-ctl speaks
   AgentWorldArt/        pixel characters, looks, poses, props
   TerminalUI/           pixel canvas and colors the characters are drawn with

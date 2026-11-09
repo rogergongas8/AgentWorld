@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a graph says about a project, the way graphify reports it: the
+/// What a graph says about a project, the way a code-graph report would: the
 /// clusters it falls into, its hubs, the links that cross clusters, and the
 /// shortest way from one file to another.
 public enum GraphAnalysis {
@@ -137,90 +137,5 @@ public enum GraphAnalysis {
             }
         }
         return nil
-    }
-}
-
-/// A graph graphify built (`graphify-out/graph.json`): its symbols —
-/// classes, functions, modules — with the communities it found. Read
-/// loosely, since the format is NetworkX's node-link JSON and its field
-/// names have moved between versions.
-public struct GraphifyGraph: Sendable, Equatable {
-    public struct Node: Sendable, Equatable {
-        public let id: String
-        public let label: String
-        public let kind: String
-        /// The file it comes from, relative to the project when graphify says so.
-        public let file: String?
-        public let community: Int?
-    }
-
-    public struct Link: Sendable, Equatable {
-        public let from: Int
-        public let to: Int
-        public let relation: String
-        public let confidence: String?
-    }
-
-    public let nodes: [Node]
-    public let links: [Link]
-
-    public static func url(in folder: String) -> URL {
-        URL(fileURLWithPath: folder).appendingPathComponent("graphify-out/graph.json")
-    }
-
-    public static func load(folder: String) -> GraphifyGraph? {
-        guard let data = try? Data(contentsOf: url(in: folder)) else { return nil }
-        return parse(data)
-    }
-
-    public static func parse(_ data: Data) -> GraphifyGraph? {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rawNodes = (object["nodes"] ?? (object["graph"] as? [String: Any])?["nodes"]) as? [[String: Any]] else { return nil }
-        func string(_ value: Any?) -> String? {
-            if let text = value as? String { return text }
-            if let number = value as? NSNumber { return number.stringValue }
-            return nil
-        }
-        var index: [String: Int] = [:]
-        var nodes: [Node] = []
-        for raw in rawNodes {
-            guard let id = string(raw["id"] ?? raw["key"] ?? raw["name"]) else { continue }
-            let file = string(raw["source_file"] ?? raw["file"] ?? raw["path"])
-                ?? string(raw["source"]).map { $0.components(separatedBy: ":").first ?? $0 }
-            index[id] = nodes.count
-            nodes.append(Node(id: id, label: string(raw["label"] ?? raw["name"]) ?? id,
-                              kind: string(raw["type"] ?? raw["file_type"] ?? raw["kind"]) ?? "node",
-                              file: file, community: (raw["community"] as? NSNumber)?.intValue ?? Int(string(raw["community"]) ?? "")))
-        }
-        let rawLinks = (object["links"] ?? object["edges"]) as? [[String: Any]] ?? []
-        let links = rawLinks.compactMap { raw -> Link? in
-            guard let source = string(raw["source"]), let target = string(raw["target"]),
-                  let from = index[source], let to = index[target] else { return nil }
-            return Link(from: from, to: to, relation: string(raw["relation"] ?? raw["type"] ?? raw["label"]) ?? "uses",
-                        confidence: string(raw["confidence"]))
-        }
-        return nodes.isEmpty ? nil : GraphifyGraph(nodes: nodes, links: links)
-    }
-
-    /// As a project graph for the map: each symbol a node in its file's
-    /// folder, sized by how connected it is, and its communities kept.
-    public func projectGraph(root: String) -> (graph: ProjectGraph, communities: [Int]?) {
-        let prefix = URL(fileURLWithPath: root).standardizedFileURL.path + "/"
-        func relative(_ file: String?) -> String {
-            guard let file else { return "" }
-            return file.hasPrefix(prefix) ? String(file.dropFirst(prefix.count)) : file
-        }
-        let files = nodes.map { relative($0.file) }
-        let groups = ProjectGraph.groupNames(files.map { $0.isEmpty ? "(unknown)/x" : $0 })
-        var degree = [Int](repeating: 0, count: nodes.count)
-        for link in links { degree[link.from] += 1; degree[link.to] += 1 }
-        let graphNodes = nodes.enumerated().map { index, node in
-            ProjectGraph.Node(path: node.id, group: groups[index], lines: max(1, degree[index] * 25),
-                              file: files[index].isEmpty ? node.id : files[index], label: node.label, kind: node.kind)
-        }
-        let edges = Set(links.filter { $0.from != $0.to }.map { ProjectGraph.Edge(from: $0.from, to: $0.to) })
-            .sorted { ($0.from, $0.to) < ($1.from, $1.to) }
-        let communities = nodes.allSatisfy { $0.community != nil } ? nodes.map { $0.community! } : nil
-        return (ProjectGraph(nodes: graphNodes, edges: edges), communities)
     }
 }

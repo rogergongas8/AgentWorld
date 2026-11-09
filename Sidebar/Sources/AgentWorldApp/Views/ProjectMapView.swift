@@ -83,11 +83,10 @@ struct ProjectMapView: View {
             Image(systemName: "point.3.connected.trianglepath.dotted").foregroundStyle(Palette.claude)
             Text("Map of \(model.workspaceName(model.selectedFolder))").font(.mono(14, .bold)).foregroundStyle(Palette.cream)
             if let map = model.projectMap, map.folder == model.selectedFolder {
-                Text("\(map.graph.nodes.count) \(map.symbols ? "symbols" : "files") · \(map.graph.edges.count) links")
+                Text("\(map.graph.nodes.count) files · \(map.graph.edges.count) links")
                     .font(.mono(11)).foregroundStyle(Palette.muted)
             }
             Spacer()
-            GraphSourcePicker()
             Picker("Color by", selection: $colorBy) {
                 Text("Clusters").tag("clusters")
                 Text("Folders").tag("folders")
@@ -231,9 +230,8 @@ struct ProjectMapView: View {
     private func tooltip(_ map: ProjectMap, _ index: Int) -> some View {
         let node = map.graph.nodes[index]
         return VStack(alignment: .leading, spacing: 2) {
-            Text(map.symbols ? node.name : node.path).font(.mono(10.5, .semibold)).foregroundStyle(Palette.cream)
-            Text((map.symbols ? [node.kind, node.file].compactMap { $0 }.joined(separator: " · ") + " · " : "\(node.lines) lines · ")
-                 + "uses \(map.uses[index].count) · used by \(map.usedBy[index].count)")
+            Text(node.path).font(.mono(10.5, .semibold)).foregroundStyle(Palette.cream)
+            Text("\(node.lines) lines · uses \(map.uses[index].count) · used by \(map.usedBy[index].count)")
                 .font(.mono(9.5)).foregroundStyle(Palette.muted)
         }
         .padding(.horizontal, 8)
@@ -290,10 +288,10 @@ struct ProjectMapView: View {
                         Circle().fill(color(map, index)).frame(width: 9, height: 9)
                         Text(node.name).font(.mono(13.5, .bold)).foregroundStyle(Palette.cream).lineLimit(2)
                     }
-                    Text(map.symbols ? [node.kind, node.file].compactMap { $0 }.joined(separator: " · ") : node.path)
+                    Text(node.path)
                         .font(.mono(10)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
-                        if !map.symbols { Text("\(node.lines) lines").font(.mono(10.5)).foregroundStyle(Palette.text) }
+                        Text("\(node.lines) lines").font(.mono(10.5)).foregroundStyle(Palette.text)
                         if let change {
                             ChangeBadge(kind: change.kind).scaleEffect(0.8)
                             LineCounts(change: change)
@@ -308,9 +306,7 @@ struct ProjectMapView: View {
                         if target.provider.isAgent {
                         Button {
                             model.reveal(target)
-                            target.type(map.symbols
-                                ? "Explain what \(node.name) in \(node.file) does and how it connects to what it uses and what uses it. "
-                                : "Explain what \(node.path) does and how it fits with the files it uses and the ones that use it. ")
+                            target.type("Explain what \(node.path) does and how it fits with the files it uses and the ones that use it. ")
                         } label: {
                             Label("Ask \(target.provider.shortName) to explain it", systemImage: "questionmark.bubble")
                         }
@@ -514,86 +510,6 @@ struct ScrollZoom: NSViewRepresentable {
     func updateNSView(_ nsView: View, context: Context) { nsView.onScroll = onScroll }
 }
 
-/// Files (read by the app) or Symbols (graphify's graph, when it's there);
-/// without one, a way to get it.
-struct GraphSourcePicker: View {
-    @EnvironmentObject private var model: AppModel
-    @State private var explaining = false
-
-    var body: some View {
-        let folder = model.selectedFolder
-        let symbols = model.projectMap?.folder == folder && model.projectMap?.symbols == true
-        let available = model.hasGraphify(folder)
-        HStack(spacing: 2) {
-            segment("Files", on: !symbols) { model.buildProjectMap(folder, symbols: false) }
-            segment("Symbols", on: symbols) {
-                if available { model.buildProjectMap(folder, symbols: true) } else { explaining = true }
-            }
-            .popover(isPresented: $explaining, arrowEdge: .bottom) { GraphifyHelp(folder: folder) { explaining = false } }
-        }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Palette.background))
-        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Palette.border))
-        .help(available ? "Files, or graphify's classes and functions" : "Symbols need graphify: click to see how")
-    }
-
-    private func segment(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.mono(11, on ? .semibold : .regular))
-                .foregroundStyle(on ? Palette.cream : Palette.muted)
-                .padding(.horizontal, 9)
-                .frame(height: 22)
-                .background(RoundedRectangle(cornerRadius: 5).fill(on ? Palette.selected : .clear))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-/// How to get a symbol map: graphify, run by your agent or by you.
-struct GraphifyHelp: View {
-    @EnvironmentObject private var model: AppModel
-    let folder: String
-    let done: () -> Void
-
-    var body: some View {
-        let agent = model.allSessions.first { $0.folder == folder && $0.provider.isAgent }
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Symbols come from graphify").font(.mono(12.5, .bold)).foregroundStyle(Palette.cream)
-            Text("graphify reads the code with real parsers (tree-sitter, 30+ languages) and maps classes and functions and how they call each other. The app shows its graph when there's a graphify-out/graph.json in the workspace.")
-                .font(.mono(10.5)).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
-            Text("pipx install graphifyy && graphify install")
-                .font(.mono(11)).foregroundStyle(Palette.text)
-                .textSelection(.enabled)
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Palette.background))
-            HStack {
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString("pipx install graphifyy && graphify install", forType: .string)
-                }
-                if let agent {
-                    Button("Ask \(agent.provider.shortName) to build it") {
-                        done()
-                        model.showsMap = false
-                        model.reveal(agent)
-                        agent.type("/graphify .")
-                    }
-                    .help("Types /graphify . into \(agent.label): press return there once graphify is installed")
-                }
-                Spacer()
-                Link("graphify on GitHub", destination: URL(string: "https://github.com/Graphify-Labs/graphify")!)
-                    .font(.mono(10.5))
-            }
-        }
-        .padding(14)
-        .frame(width: 380)
-        .background(Palette.panel)
-    }
-}
-
 /// The project map in small, at the top of the panel's Changes: where in
 /// the project the changes are, and what your agents are touching. Click
 /// for the full map.
@@ -647,7 +563,7 @@ struct MiniMap: View {
         .onTapGesture { model.openProjectMap() }
         .help("Where the changes are in the project (ringed) and what agents touch (glowing). Click for the full map (⌘⇧M).")
         .onAppear {
-            if model.projectMap?.folder != folder { model.buildProjectMap(folder, symbols: false) }
+            if model.projectMap?.folder != folder { model.buildProjectMap(folder) }
         }
     }
 

@@ -34,8 +34,7 @@ using each CLI's own features rather than Claude-only logic.
   to mention in the terminal.
 - **Project map** (⌘⇧M): files as a graph of who uses whom, live rings for
   changes and agents' edits, details and actions per file.
-- **Map, graphify-style**: clusters (Louvain), hubs, surprising links, ⇧-click
-  paths; graphify's symbols when `graphify-out/graph.json` exists; a
+- **Map**: clusters (Louvain), hubs, surprising links, ⇧-click paths; a
   minimap in Changes; `agentworld-ctl map` so every CLI can ask for the
   structure, a file's blast radius or the path between two files.
 - **Grid button** on the home screen: hover 3×3 boxes, open that many tiled

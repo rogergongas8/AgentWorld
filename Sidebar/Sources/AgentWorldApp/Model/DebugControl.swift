@@ -48,7 +48,6 @@ enum DebugControl {
                     model.showsInspector = true
                     model.panel.section = section
                 }
-            case "map-symbols": model.buildProjectMap(model.selectedFolder, symbols: argument != "off")
             case "map-select": model.mapFocus = argument
             case "palette":
                 model.paletteSeed = argument

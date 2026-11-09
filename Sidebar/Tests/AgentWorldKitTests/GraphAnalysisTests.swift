@@ -29,26 +29,4 @@ import Testing
         #expect(GraphAnalysis.path(from: 0, to: 0, nodes: 6, edges: edges) == [0])
         #expect(GraphAnalysis.path(from: 0, to: 6, nodes: 7, edges: edges) == nil)
     }
-
-    @Test func readsGraphifyNodeLinkJSON() throws {
-        let json = #"""
-        {"directed": true, "nodes": [
-          {"id": "auth.login", "label": "login()", "type": "function", "source_file": "src/auth.py", "community": 0},
-          {"id": "db.Pool", "label": "Pool", "type": "class", "source": "src/db.py:12", "community": 1},
-          {"id": 7, "label": "config"}
-        ], "links": [
-          {"source": "auth.login", "target": "db.Pool", "relation": "calls", "confidence": "EXTRACTED"},
-          {"source": "auth.login", "target": 7, "relation": "imports"},
-          {"source": "auth.login", "target": "missing"}
-        ]}
-        """#
-        let graph = try #require(GraphifyGraph.parse(Data(json.utf8)))
-        #expect(graph.nodes.count == 3)
-        #expect(graph.nodes[1].file == "src/db.py")
-        #expect(graph.nodes[0].community == 0)
-        #expect(graph.links.count == 2)
-        #expect(graph.links[0].relation == "calls")
-        #expect(graph.links[0].confidence == "EXTRACTED")
-        #expect(graph.links[1].to == 2)
-    }
 }
