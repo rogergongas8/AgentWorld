@@ -537,7 +537,10 @@ struct KeyCatcher: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(onKey: onKey) }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        if let monitor = coordinator.monitor { NSEvent.removeMonitor(monitor) }
+        if let monitor = coordinator.monitor {
+            coordinator.monitor = nil
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     final class Coordinator {

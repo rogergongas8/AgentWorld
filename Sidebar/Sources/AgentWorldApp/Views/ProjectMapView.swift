@@ -668,11 +668,11 @@ struct ScrollZoom: NSViewRepresentable {
 
     final class View: NSView {
         var onScroll: ((CGFloat) -> Void)?
-        var monitor: Any?
+        private var monitor: Any?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let monitor { NSEvent.removeMonitor(monitor) }
+            stopListening()
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
                 guard let self, let window = self.window, event.window === window else { return event }
@@ -684,9 +684,16 @@ struct ScrollZoom: NSViewRepresentable {
         }
 
         override func removeFromSuperview() {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
+            stopListening()
             super.removeFromSuperview()
+        }
+
+        /// Removes the monitor exactly once. Removing the same one a second time
+        /// (which this view used to do when closing the map) crashes the app.
+        private func stopListening() {
+            guard let monitor else { return }
+            self.monitor = nil
+            NSEvent.removeMonitor(monitor)
         }
     }
 
