@@ -11,10 +11,15 @@ import SwiftUI
 /// uses it, and hand it to the terminal.
 struct ProjectMapView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var yaw = 0.6
+    @State private var pitch = 0.35
     @State private var zoom: CGFloat = 1
     @State private var pan: CGSize = .zero
-    @State private var dragStart: CGSize?
+    @State private var dragStart: DragStart?
+    @State private var dragging = false
     @State private var pinchStart: CGFloat?
+    /// Set when a script asked for a view: the map stops turning by itself.
+    @State private var frozen = false
     @State private var hovered: Int?
     @State private var selected: Int?
     @State private var search = ""
@@ -24,6 +29,10 @@ struct ProjectMapView: View {
     /// Dots colored by the clusters the links form, or by folder.
     @AppStorage("mapColorBy") private var colorBy = "clusters"
     @AppStorage("mapInsights") private var showsInsights = true
+    /// The map turns slowly by itself (until you hover, select or drag).
+    @AppStorage("mapSpin") private var spins = true
+    /// Files that link to nothing, on the outer shell.
+    @AppStorage("mapShowLoose") private var showsLoose = true
 
     /// The guide's eight categorical hues, dark steps, in fixed order; more
     /// folders than that share gray ("other").
@@ -61,6 +70,18 @@ struct ProjectMapView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.border))
         .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
+        .onReceive(Timer.publish(every: 1.0 / 24, on: .main, in: .common).autoconnect()) { _ in
+            if spins, !frozen, !dragging, hovered == nil, selected == nil, NSApp.isActive { yaw += 0.0045 }
+        }
+        .onReceive(model.$mapCamera) { request in
+            guard let request, request.count >= 3 else { return }
+            yaw = request[0]
+            pitch = request[1]
+            zoom = CGFloat(request[2])
+            pan = .zero
+            frozen = true
+            model.mapCamera = nil
+        }
         .onExitCommand {
             if pathEnd != nil { pathEnd = nil } else if selected != nil { selected = nil } else { model.showsMap = false }
         }
@@ -83,7 +104,7 @@ struct ProjectMapView: View {
             Image(systemName: "point.3.connected.trianglepath.dotted").foregroundStyle(Palette.claude)
             Text("Map of \(model.workspaceName(model.selectedFolder))").font(.mono(14, .bold)).foregroundStyle(Palette.cream)
             if let map = model.projectMap, map.folder == model.selectedFolder {
-                Text("\(map.graph.nodes.count) files · \(map.graph.edges.count) links")
+                Text("\(map.graph.nodes.count) files · \(map.graph.edges.count) links" + (map.linked.contains(false) ? " · \(map.linked.filter { !$0 }.count) unlinked" : ""))
                     .font(.mono(11)).foregroundStyle(Palette.muted)
             }
             Spacer()
@@ -109,11 +130,9 @@ struct ProjectMapView: View {
             .frame(height: 26)
             .background(RoundedRectangle(cornerRadius: 6).fill(Palette.panel))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(searching ? Palette.claude.opacity(0.6) : Palette.border))
-            ChromeButton(symbol: "minus.magnifyingglass", help: "Zoom out") { withAnimation(.easeOut(duration: 0.15)) { zoom = max(0.2, zoom / 1.4) } }
-            ChromeButton(symbol: "plus.magnifyingglass", help: "Zoom in") { withAnimation(.easeOut(duration: 0.15)) { zoom = min(8, zoom * 1.4) } }
-            ChromeButton(symbol: "arrow.up.left.and.down.right.magnifyingglass", help: "Fit the whole project") {
-                withAnimation(.easeOut(duration: 0.2)) { zoom = 1; pan = .zero }
-            }
+            ChromeButton(symbol: "rotate.3d", active: spins, help: "Turn the map slowly (it stops while you hover, select or drag)") { spins.toggle() }
+            ChromeButton(symbol: "circle.dotted", active: showsLoose, help: "Files that link to nothing, on the outer shell") { showsLoose.toggle() }
+            ChromeButton(symbol: "arrow.up.left.and.down.right.magnifyingglass", help: "Reset the view (or double-click the map)") { resetView() }
             ChromeButton(symbol: "arrow.clockwise", help: "Read the project again") { model.buildProjectMap(model.selectedFolder) }
             ChromeButton(symbol: "xmark", help: "Close (esc)") { model.showsMap = false }
         }
@@ -122,92 +141,128 @@ struct ProjectMapView: View {
         .background(Palette.panel)
     }
 
-    // MARK: - Canvas
+    // MARK: - Canvas (3D)
+
+    /// A camera orbiting the 3D layout (a ball of radius 500). A gentle
+    /// perspective makes near files bigger and brighter than far ones.
+    struct Camera {
+        static let radius = 500.0
+        static let eye = 1700.0
+        let yaw: Double
+        let pitch: Double
+        let size: CGSize
+        let zoom: CGFloat
+        let pan: CGSize
+
+        struct Projected {
+            let point: CGPoint
+            /// -1 (far) … 1 (near).
+            let depth: Double
+            /// Perspective scale, around 1.
+            let factor: CGFloat
+        }
+
+        func project(_ p: GraphLayout3D.Point) -> Projected {
+            let cosY = cos(yaw), sinY = sin(yaw), cosP = cos(pitch), sinP = sin(pitch)
+            let x1 = p.x * cosY + p.z * sinY
+            let z1 = -p.x * sinY + p.z * cosY
+            let y2 = p.y * cosP - z1 * sinP
+            let z2 = p.y * sinP + z1 * cosP
+            let factor = Self.eye / (Self.eye - z2)
+            let fit = Double(min(size.width, size.height)) / (1.95 * Self.radius) * Double(zoom)
+            return Projected(
+                point: CGPoint(x: Double(size.width) / 2 + Double(pan.width) + x1 * factor * fit,
+                               y: Double(size.height) / 2 + Double(pan.height) - y2 * factor * fit),
+                depth: max(-1, min(1, z2 / Self.radius)), factor: CGFloat(factor))
+        }
+    }
+
+    /// Everything one frame needs, worked out once.
+    private struct Frame {
+        let map: ProjectMap
+        let camera: Camera
+        let projected: [Camera.Projected]
+        /// The files to draw, far to near.
+        let order: [Int]
+        let focus: Int?
+        let neighbors: Set<Int>?
+        let matches: Set<Int>?
+        let routeLinks: Set<[Int]>
+        let changed: [String: FileChange]
+        let touched: [String: Color]
+        let hubs: Set<Int>
+    }
+
+    private struct DragStart {
+        let yaw: Double
+        let pitch: Double
+        let pan: CGSize
+        /// ⌥ held: move the map instead of turning it.
+        let moves: Bool
+    }
 
     private func canvas(_ map: ProjectMap) -> some View {
         let changed = model.changesByWorkspacePath(map.folder)
         let touched = touchedColors(map)
         let matches = searchMatches(map)
+        let hubs = Set(map.hubs.prefix(6).map(\.node))
         return GeometryReader { geometry in
-            let transform = Transform(bounds: map.bounds, size: geometry.size, zoom: zoom, pan: pan)
+            let camera = Camera(yaw: yaw, pitch: pitch, size: geometry.size, zoom: zoom, pan: pan)
+            let projected = map.positions3D.map { camera.project($0) }
             let focus = selected ?? hovered
             let route = routeNodes(map)
             let routeLinks = Set(zip(route, route.dropFirst()).flatMap { [[$0, $1], [$1, $0]] })
             let neighbors = route.isEmpty ? focus.map { Set(map.uses[$0] + map.usedBy[$0] + [$0]) } : Set(route)
-            TimelineView(.animation(minimumInterval: 1 / 15, paused: touched.isEmpty)) { context in
+            let order = map.graph.nodes.indices
+                .filter { showsLoose || map.linked[$0] || $0 == focus || (matches?.contains($0) ?? false) }
+                .sorted { projected[$0].depth < projected[$1].depth }
+            let frame = Frame(map: map, camera: camera, projected: projected, order: order, focus: focus, neighbors: neighbors,
+                              matches: matches, routeLinks: routeLinks, changed: changed, touched: touched, hubs: hubs)
+            TimelineView(.animation(minimumInterval: 1 / 20, paused: touched.isEmpty)) { context in
                 let pulse = 0.5 + 0.5 * sin(context.date.timeIntervalSinceReferenceDate * 3)
-                Canvas { graphics, _ in
-                    // Links first, faint; the focused file's links bright.
-                    for edge in map.graph.edges {
-                        let a = transform.point(map.positions[edge.from]), b = transform.point(map.positions[edge.to])
-                        var path = Path()
-                        path.move(to: a)
-                        path.addLine(to: b)
-                        if !routeLinks.isEmpty {
-                            let onRoute = routeLinks.contains([edge.from, edge.to])
-                            graphics.stroke(path, with: .color((onRoute ? Palette.cream : Palette.muted).opacity(onRoute ? 0.95 : 0.04)),
-                                            lineWidth: onRoute ? 2.4 : 0.7)
-                            continue
-                        }
-                        let lit = focus.map { edge.from == $0 || edge.to == $0 } ?? false
-                        let color: Color = lit ? (edge.from == focus ? Palette.cream : Palette.claude) : Palette.muted
-                        graphics.stroke(path, with: .color(color.opacity(lit ? 0.75 : (focus == nil ? 0.16 : 0.05))), lineWidth: lit ? 1.4 : 0.7)
-                    }
-                    // Files.
-                    for (index, node) in map.graph.nodes.enumerated() {
-                        let center = transform.point(map.positions[index])
-                        let radius = Self.radius(lines: node.lines) * min(2, max(0.7, sqrt(zoom)))
-                        let dimmed = (neighbors.map { !$0.contains(index) } ?? false) || (matches.map { !$0.contains(index) } ?? false)
-                        let rect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-                        if let glow = touched[node.file] {
-                            let halo = rect.insetBy(dx: -5 - 3 * pulse, dy: -5 - 3 * pulse)
-                            graphics.fill(Path(ellipseIn: halo), with: .color(glow.opacity(0.25 + 0.2 * pulse)))
-                        }
-                        graphics.fill(Path(ellipseIn: rect), with: .color(color(map, index).opacity(dimmed ? 0.18 : 1)))
-                        if changed[node.file] != nil {
-                            graphics.stroke(Path(ellipseIn: rect.insetBy(dx: -2.5, dy: -2.5)), with: .color(Palette.warning.opacity(dimmed ? 0.3 : 1)), lineWidth: 1.6)
-                        }
-                        if index == selected || index == pathEnd {
-                            graphics.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(Palette.cream), lineWidth: 1.5)
-                        }
-                    }
-                    // Names: the focused file and its neighbors, big files when zoomed in, search hits.
-                    for (index, node) in map.graph.nodes.enumerated() {
-                        let isNeighbor = neighbors?.contains(index) ?? false
-                        let isHit = matches?.contains(index) ?? false
-                        let show = isNeighbor || isHit || (zoom >= 2.2 && node.lines > 150) || (zoom >= 3.5)
-                        guard show else { continue }
-                        let center = transform.point(map.positions[index])
-                        let radius = Self.radius(lines: node.lines) * min(2, max(0.7, sqrt(zoom)))
-                        let text = Text(node.name).font(.mono(index == focus ? 11.5 : 10, index == focus ? .semibold : .regular))
-                            .foregroundColor(index == focus ? Palette.cream : Palette.text)
-                        graphics.draw(text, at: CGPoint(x: center.x, y: center.y + radius + 8), anchor: .center)
-                    }
+                Canvas { graphics, size in
+                    drawBackdrop(&graphics, size)
+                    drawLinks(&graphics, frame)
+                    drawFiles(&graphics, frame, pulse: pulse)
+                    drawNames(&graphics, frame)
                 }
             }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
                 switch phase {
-                case .active(let location): hovered = nearest(map, to: location, transform: transform)
+                case .active(let location): hovered = nearest(frame, to: location)
                 case .ended: hovered = nil
                 }
             }
             .gesture(
                 DragGesture(minimumDistance: 3)
                     .onChanged { value in
-                        if dragStart == nil { dragStart = pan }
-                        pan = CGSize(width: (dragStart?.width ?? 0) + value.translation.width, height: (dragStart?.height ?? 0) + value.translation.height)
+                        if dragStart == nil {
+                            dragStart = DragStart(yaw: yaw, pitch: pitch, pan: pan, moves: NSEvent.modifierFlags.contains(.option))
+                            dragging = true
+                        }
+                        guard let start = dragStart else { return }
+                        if start.moves {
+                            pan = CGSize(width: start.pan.width + value.translation.width, height: start.pan.height + value.translation.height)
+                        } else {
+                            yaw = start.yaw + Double(value.translation.width) * 0.008
+                            pitch = max(-1.45, min(1.45, start.pitch + Double(value.translation.height) * 0.008))
+                        }
                     }
-                    .onEnded { _ in dragStart = nil }
+                    .onEnded { _ in
+                        dragStart = nil
+                        dragging = false
+                    }
             )
             .simultaneousGesture(
                 MagnificationGesture()
                     .onChanged { value in
                         if pinchStart == nil { pinchStart = zoom }
-                        zoom = min(8, max(0.2, (pinchStart ?? 1) * value))
+                        zoom = min(8, max(0.3, (pinchStart ?? 1) * value))
                     }
                     .onEnded { _ in pinchStart = nil }
             )
+            .simultaneousGesture(TapGesture(count: 2).onEnded { resetView() })
             .onTapGesture {
                 // ⇧-click: the way from the selected file to this one.
                 if NSEvent.modifierFlags.contains(.shift), selected != nil, let hovered, hovered != selected {
@@ -217,14 +272,162 @@ struct ProjectMapView: View {
                     pathEnd = nil
                 }
             }
-            .background(ScrollZoom { delta in zoom = min(8, max(0.2, zoom * (1 + delta * 0.01))) })
+            .background(ScrollZoom { delta in zoom = min(8, max(0.3, zoom * (1 + delta * 0.01))) })
             .overlay(alignment: .topLeading) {
                 if let hovered, hovered != selected, map.graph.nodes.indices.contains(hovered) {
-                    tooltip(map, hovered).position(x: transform.point(map.positions[hovered]).x, y: max(30, transform.point(map.positions[hovered]).y - 34))
+                    let at = projected[hovered].point
+                    tooltip(map, hovered).position(x: at.x, y: max(30, at.y - 34))
                 }
             }
         }
         .background(Palette.background)
+    }
+
+    // MARK: - Drawing
+
+    /// A soft glow in the middle, so the map floats on dark space.
+    private func drawBackdrop(_ graphics: inout GraphicsContext, _ size: CGSize) {
+        graphics.fill(Path(CGRect(origin: .zero, size: size)), with: .radialGradient(
+            Gradient(colors: [Color(rgb: RGB(hex: 0x182030)), Palette.background]),
+            center: CGPoint(x: size.width / 2, y: size.height * 0.46), startRadius: 0, endRadius: max(size.width, size.height) * 0.62))
+    }
+
+    /// Far things fade: 0.32 at the back, 1 at the front.
+    private func fog(_ depth: Double) -> Double { 0.32 + 0.68 * (depth + 1) / 2 }
+
+    private func nodeRadius(_ map: ProjectMap, _ index: Int, _ projected: Camera.Projected) -> CGFloat {
+        var base: CGFloat = map.linked[index] ? 2.4 + CGFloat(log2(Double(max(1, map.graph.nodes[index].lines)))) * 0.7 : 1.5
+        // The clusters past the first eight share gray: smaller, so the main ones stand out.
+        if colorIndex(map, index) >= Self.groupColors.count { base *= 0.78 }
+        return base * projected.factor * min(1.8, max(0.75, sqrt(zoom)))
+    }
+
+    /// Links first, tinted by their cluster and faded with depth; the focused
+    /// file's links bright. Batched by color and depth, so thousands stay cheap.
+    private func drawLinks(_ graphics: inout GraphicsContext, _ f: Frame) {
+        let dimAll = f.focus != nil || !f.routeLinks.isEmpty
+        var buckets: [Int: Path] = [:]
+        for edge in f.map.graph.edges {
+            let a = f.projected[edge.from], b = f.projected[edge.to]
+            if !f.routeLinks.isEmpty {
+                if f.routeLinks.contains([edge.from, edge.to]) {
+                    var path = Path()
+                    path.move(to: a.point)
+                    path.addLine(to: b.point)
+                    graphics.stroke(path, with: .color(Palette.cream.opacity(0.95)), lineWidth: 2.4)
+                    continue
+                }
+            } else if let focus = f.focus, edge.from == focus || edge.to == focus {
+                var path = Path()
+                path.move(to: a.point)
+                path.addLine(to: b.point)
+                graphics.stroke(path, with: .color((edge.from == focus ? Palette.cream : Palette.claude).opacity(0.85)), lineWidth: 1.4)
+                continue
+            }
+            let bucket = min(3, Int((a.depth + b.depth + 2) / 4 * 4))
+            let key = colorIndex(f.map, edge.from) * 4 + bucket
+            buckets[key, default: Path()].move(to: a.point)
+            buckets[key, default: Path()].addLine(to: b.point)
+        }
+        for (key, path) in buckets {
+            let alpha = (0.08 + 0.09 * Double(key % 4)) * (dimAll ? 0.3 : 1)
+            graphics.stroke(path, with: .color(Self.shades[key / 4].opacity(alpha)), lineWidth: 0.6 + 0.25 * CGFloat(key % 4))
+        }
+    }
+
+    private func drawFiles(_ graphics: inout GraphicsContext, _ f: Frame, pulse: Double) {
+        for index in f.order {
+            let p = f.projected[index]
+            let node = f.map.graph.nodes[index]
+            let radius = nodeRadius(f.map, index, p)
+            let dimmed = (f.neighbors.map { !$0.contains(index) } ?? false) || (f.matches.map { !$0.contains(index) } ?? false)
+            let alpha = fog(p.depth) * (f.map.linked[index] ? 1 : 0.55) * (dimmed ? 0.16 : 1)
+            let tint = color(f.map, index)
+            let rect = CGRect(x: p.point.x - radius, y: p.point.y - radius, width: radius * 2, height: radius * 2)
+            // A soft glow around hubs, and a pulsing one around what an agent touched.
+            if !dimmed, let glow = f.touched[node.file] ?? (f.hubs.contains(index) ? tint : nil) {
+                let reach = radius * (f.touched[node.file] != nil ? 3.4 + 0.8 * pulse : 3.0)
+                let area = CGRect(x: p.point.x - reach, y: p.point.y - reach, width: reach * 2, height: reach * 2)
+                graphics.fill(Path(ellipseIn: area), with: .radialGradient(
+                    Gradient(colors: [glow.opacity(0.42), glow.opacity(0)]), center: p.point, startRadius: radius * 0.6, endRadius: reach))
+            }
+            graphics.fill(Path(ellipseIn: rect), with: .color(tint.opacity(alpha)))
+            // A small highlight makes the bigger files read as spheres.
+            if radius >= 3.2, !dimmed {
+                let spot = radius * 0.42
+                let at = CGPoint(x: p.point.x - radius * 0.34, y: p.point.y - radius * 0.38)
+                graphics.fill(Path(ellipseIn: CGRect(x: at.x - spot, y: at.y - spot, width: spot * 2, height: spot * 2)),
+                              with: .color(Color.white.opacity(0.26 * alpha)))
+            }
+            if f.changed[node.file] != nil {
+                graphics.stroke(Path(ellipseIn: rect.insetBy(dx: -2.5, dy: -2.5)), with: .color(Palette.warning.opacity(dimmed ? 0.3 : 1)), lineWidth: 1.6)
+            }
+            if index == selected || index == pathEnd {
+                graphics.stroke(Path(ellipseIn: rect.insetBy(dx: -4, dy: -4)), with: .color(Palette.cream), lineWidth: 1.5)
+            }
+        }
+    }
+
+    /// Names: the focused file and its neighbors, search hits, the hubs, and big files when zoomed in.
+    private func drawNames(_ graphics: inout GraphicsContext, _ f: Frame) {
+        // Labels that would land on one already drawn are skipped (the focused file and search hits always show).
+        var taken: [CGRect] = []
+        let nearFirst = f.order.reversed().sorted { a, b in
+            let pa = a == f.focus || (f.matches?.contains(a) ?? false), pb = b == f.focus || (f.matches?.contains(b) ?? false)
+            return pa && !pb
+        }
+        for index in nearFirst {
+            let node = f.map.graph.nodes[index]
+            let isNeighbor = f.neighbors?.contains(index) ?? false
+            let isHit = f.matches?.contains(index) ?? false
+            let isHub = f.hubs.contains(index) && zoom >= 0.9 && f.focus == nil && f.projected[index].depth > -0.2
+            let show = isNeighbor || isHit || isHub || (zoom >= 2.2 && node.lines > 150) || zoom >= 3.5
+            guard show, f.map.linked[index] || isHit || index == f.focus else { continue }
+            let p = f.projected[index]
+            let radius = nodeRadius(f.map, index, p)
+            let isFocus = index == f.focus
+            let at = CGPoint(x: p.point.x, y: p.point.y + radius + 9)
+            let width = CGFloat(node.name.count) * (isFocus ? 7.2 : 6.2) + 6
+            let box = CGRect(x: at.x - width / 2, y: at.y - 8, width: width, height: 16)
+            if !isFocus, !isHit, index != pathEnd, taken.contains(where: { $0.intersects(box) }) { continue }
+            taken.append(box)
+            // A dark edge under the text keeps it readable over the links.
+            graphics.draw(Text(node.name).font(.mono(isFocus ? 11.5 : 10, isFocus ? .semibold : .regular)).foregroundColor(Palette.background.opacity(0.9)),
+                          at: CGPoint(x: at.x + 1, y: at.y + 1), anchor: .center)
+            graphics.draw(Text(node.name).font(.mono(isFocus ? 11.5 : 10, isFocus ? .semibold : .regular))
+                            .foregroundColor(isFocus ? Palette.cream : Palette.text.opacity(0.5 + 0.5 * fog(p.depth))),
+                          at: at, anchor: .center)
+        }
+    }
+
+    /// The file under the pointer: the nearest on screen, the front one winning a tie.
+    private func nearest(_ f: Frame, to location: CGPoint) -> Int? {
+        var best: (index: Int, score: CGFloat)?
+        for index in f.order {
+            let p = f.projected[index]
+            let distance = hypot(p.point.x - location.x, p.point.y - location.y)
+            guard distance < max(9, nodeRadius(f.map, index, p) + 4) else { continue }
+            let score = distance - CGFloat(p.depth) * 6
+            if score < (best?.score ?? .infinity) { best = (index, score) }
+        }
+        return best?.index
+    }
+
+    private func resetView() {
+        withAnimation(.easeOut(duration: 0.25)) {
+            yaw = 0.6
+            pitch = 0.35
+            zoom = 1
+            pan = .zero
+        }
+    }
+
+    /// The group colors with "other" last.
+    static let shades: [Color] = groupColors + [otherColor]
+
+    private func colorIndex(_ map: ProjectMap, _ index: Int) -> Int {
+        let group = colorBy == "clusters" ? map.cluster[index] : map.groupOf[index]
+        return min(group, Self.groupColors.count)
     }
 
     private func tooltip(_ map: ProjectMap, _ index: Int) -> some View {
@@ -266,7 +469,7 @@ struct ProjectMapView: View {
                 Circle().fill(Palette.claude.opacity(0.4)).frame(width: 11, height: 11)
                 Text("touched by an agent").font(.mono(10)).foregroundStyle(Palette.text)
             }
-            Text("scroll or pinch to zoom · drag to move").font(.mono(9)).foregroundStyle(Palette.faint).padding(.top, 2)
+            Text("drag to turn · ⌥-drag to move · scroll or pinch to zoom").font(.mono(9)).foregroundStyle(Palette.faint).padding(.top, 2)
         }
         .padding(10)
         .fixedSize()
@@ -443,20 +646,6 @@ struct ProjectMapView: View {
         guard let map = model.projectMap, let first = searchMatches(map)?.min(by: { map.graph.nodes[$0].path.count < map.graph.nodes[$1].path.count }) else { return }
         selected = first
     }
-
-    private func nearest(_ map: ProjectMap, to location: CGPoint, transform: Transform) -> Int? {
-        var best: (Int, CGFloat)?
-        for (index, position) in map.positions.enumerated() {
-            let point = transform.point(position)
-            let distance = hypot(point.x - location.x, point.y - location.y)
-            let reach = max(10, Self.radius(lines: map.graph.nodes[index].lines) * min(2, max(0.7, sqrt(zoom))) + 4)
-            if distance < reach, distance < (best?.1 ?? .infinity) { best = (index, distance) }
-        }
-        return best?.0
-    }
-
-    /// Dot size: grows with the file, slowly.
-    static func radius(lines: Int) -> CGFloat { 2.5 + CGFloat(log2(Double(max(1, lines)))) * 0.9 }
 
     /// Layout space to the view: fit the box, then the user's zoom and pan.
     struct Transform {

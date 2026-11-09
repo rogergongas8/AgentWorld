@@ -5,7 +5,11 @@ import Foundation
 struct ProjectMap {
     let folder: String
     let graph: ProjectGraph
-    /// Layout positions, same order as `graph.nodes`.
+    /// The 3D layout, same order as `graph.nodes`, and whether each file has
+    /// any link at all (the ones that don't sit on the outer shell).
+    let positions3D: [GraphLayout3D.Point]
+    let linked: [Bool]
+    /// The 3D layout flattened (x, y), for the minimap in Changes.
     let positions: [CGPoint]
     /// Folders by size, biggest first: the first eight get colors.
     let groups: [String]
@@ -50,9 +54,12 @@ struct ProjectMap {
             return members.count == 1 ? graph.nodes[members[0]].name
                 : short + (hub.map { " · " + ((graph.nodes[$0].name as NSString).deletingPathExtension) } ?? "")
         }
-        // Clusters get their own area, so they read as islands.
-        positions = GraphLayout.layout(nodes: graph.nodes.count, edges: links, groups: cluster)
-            .map { CGPoint(x: $0.x, y: $0.y) }
+        // Clusters get their own region, so they read as islands; files with no
+        // links at all sit on an orderly shell around them.
+        linked = uses.indices.map { !uses[$0].isEmpty || !usedBy[$0].isEmpty }
+        let layout = GraphLayout3D.layout(nodes: graph.nodes.count, edges: links, clusters: cluster, groups: groupOf)
+        positions3D = layout
+        positions = layout.map { CGPoint(x: $0.x, y: $0.y) }
     }
 
     /// The bounding box of the layout, for fitting it to the view.

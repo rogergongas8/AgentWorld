@@ -95,6 +95,8 @@ final class AppModel: ObservableObject {
     @Published var projectMap: ProjectMap?
     /// A file to select once the map is up ("Show on the map").
     @Published var mapFocus: String?
+    /// A view of the map asked for from outside: yaw, pitch, zoom (radians, radians, ×).
+    @Published var mapCamera: [Double]?
     var mapBuilding = false
     /// Each workspace's files, for ⌘K and the project map.
     @Published var projectFiles: [String: (files: [String], at: Date)] = [:]

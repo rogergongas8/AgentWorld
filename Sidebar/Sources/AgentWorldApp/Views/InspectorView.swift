@@ -129,8 +129,11 @@ struct SectionBar: View {
                         }
                     }
                 }
+                // The right edge fades, so a tab cut by it reads as "more this way".
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.88),
+                                             .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
                 .onChange(of: panel.section) { section in
-                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(section.rawValue, anchor: .center) }
+                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(section.rawValue) }
                 }
             }
             HStack(spacing: 2) {

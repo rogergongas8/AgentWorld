@@ -49,6 +49,7 @@ enum DebugControl {
                     model.panel.section = section
                 }
             case "map-select": model.mapFocus = argument
+            case "map-camera": model.mapCamera = argument.split(separator: " ").compactMap { Double($0) }
             case "palette":
                 model.paletteSeed = argument
                 model.showsPalette = false
