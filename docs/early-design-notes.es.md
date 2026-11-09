@@ -1,3 +1,5 @@
+> **Nota:** estas son las notas de diseño iniciales (en español), escritas cuando AgentWorld era solo una interfaz para Claude Code. La app ya soporta varios CLIs de agentes; el estado actual está en el [README](../README.md) y en la [hoja de ruta](../Sidebar/ROADMAP.md).
+
 # AgentWorld --- Concepto, arquitectura y plan de desarrollo
 
 ## 1. Idea general
