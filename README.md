@@ -44,15 +44,20 @@ happened. AgentWorld makes that a built-in feature instead of a habit:
   built-in workflows (second opinion, build and review, divide and conquer) let
   one agent drive the others.
 - **Token usage** by CLI, day and session (Claude Code, Codex, Gemini CLI).
-- **Project map**: your files as a graph of who uses whom, with live rings on
-  what the agents are editing, and `agentworld-ctl map` so agents can ask for
-  the structure themselves.
+- **Project map in 3D**: your files as a graph you can turn with the mouse.
+  Files that use each other cluster into coloured islands, the most connected
+  ones glow, files with no links sit on an outer shell, rings mark what has
+  uncommitted changes and a pulse what an agent is touching. Click a file for
+  what it uses and what uses it, ⇧-click a second one for the way between
+  them. `agentworld-ctl map` lets agents ask for the structure themselves.
 - **Agents drive the app.** With `agentworld-ctl` (and the bundled `agentworld`
   skill) an agent can open helper panes beside it, hand off work and read the
   answers.
 - **⌘K palette**, a commit sheet (⌘⇧C), and keyboard-first navigation.
 
 ![The right panel: crew, changes and the project map](docs/screenshots/panel-changes.png)
+
+![The project map, in 3D](docs/screenshots/map.png)
 
 ## How it works, and what it touches
 
