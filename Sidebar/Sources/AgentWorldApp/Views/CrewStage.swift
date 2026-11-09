@@ -107,8 +107,8 @@ struct StageActor: View {
 struct Ground: View {
     var body: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(Color(rgb: RGB(hex: 0x3FA34D))).frame(height: 2)
-            Rectangle().fill(Color(rgb: RGB(hex: 0x6B4F3A)))
+            Rectangle().fill(Color(rgb: RGB(hex: 0x2E7A3B))).frame(height: 2)
+            Rectangle().fill(Color(rgb: RGB(hex: 0x4A3B2E)))
         }
     }
 }

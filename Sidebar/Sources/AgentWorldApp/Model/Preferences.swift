@@ -20,6 +20,9 @@ final class Preferences: ObservableObject {
     @Published var showsLiveCrew: Bool { didSet { defaults.set(showsLiveCrew, forKey: "showsLiveCrew") } }
     /// The little theater beside a lone terminal.
     @Published var showsStories: Bool { didSet { defaults.set(showsStories, forKey: "showsStories") } }
+    /// The pixel scene at the top of the right panel. Off leaves just the
+    /// agent's face and its one-line status.
+    @Published var showsPanelScene: Bool { didSet { defaults.set(showsPanelScene, forKey: "showsPanelScene") } }
 
     // MARK: Terminal
 
@@ -82,6 +85,7 @@ final class Preferences: ObservableObject {
             // and the idle stories are opt-in so the window stays calm.
             "showsLiveCrew": false,
             "showsStories": false,
+            "showsPanelScene": true,
             "terminalFont": "",
             "terminalFontSize": 13.0,
             "optionAsMeta": false,
@@ -99,6 +103,7 @@ final class Preferences: ObservableObject {
         confirmClosingBusy = defaults.bool(forKey: "confirmClosingBusy")
         showsLiveCrew = defaults.bool(forKey: "showsLiveCrew")
         showsStories = defaults.bool(forKey: "showsStories")
+        showsPanelScene = defaults.bool(forKey: "showsPanelScene")
         fontName = defaults.string(forKey: "terminalFont") ?? ""
         fontSize = defaults.double(forKey: "terminalFontSize")
         optionAsMeta = defaults.bool(forKey: "optionAsMeta")

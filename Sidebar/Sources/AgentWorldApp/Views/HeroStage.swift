@@ -10,6 +10,7 @@ import TerminalUI
 /// subagent, acts out that work instead. Click one to see its card.
 struct PanelStage: View {
     @EnvironmentObject private var model: AppModel
+    @ObservedObject private var preferences = Preferences.shared
     @ObservedObject var panel: PanelNavigator
     let session: TerminalSession?
     let agents: [AgentDefinition]
@@ -23,14 +24,19 @@ struct PanelStage: View {
         TimelineView(.periodic(from: .now, by: 0.1)) { context in
             let now = context.date
             VStack(alignment: .leading, spacing: 8) {
-                scene(now: now)
-                    .frame(height: Self.sceneHeight)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        LinearGradient(colors: [Palette.background, accent.opacity(0.12)], startPoint: .top, endPoint: .bottom)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(alignment: .topLeading) { bubble(now: now) }
+                if preferences.showsPanelScene {
+                    scene(now: now)
+                        .frame(height: Self.sceneHeight)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            LinearGradient(colors: [Palette.background, accent.opacity(0.12)], startPoint: .top, endPoint: .bottom)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(alignment: .topLeading) { bubble(now: now) }
+                } else {
+                    // Scene folded away: a line the agent said to you still shows.
+                    bubble(now: now)
+                }
                 caption(now: now)
             }
         }
@@ -49,8 +55,8 @@ struct PanelStage: View {
         ZStack(alignment: .bottom) {
             // Grass over earth.
             VStack(spacing: 0) {
-                Rectangle().fill(Color(rgb: RGB(hex: 0x3FA34D))).frame(height: 3)
-                Rectangle().fill(Color(rgb: RGB(hex: 0x6B4F3A))).frame(height: 7)
+                Rectangle().fill(Color(rgb: RGB(hex: 0x2E7A3B))).frame(height: 3)
+                Rectangle().fill(Color(rgb: RGB(hex: 0x4A3B2E))).frame(height: 7)
             }
             HStack(alignment: .bottom, spacing: 2) {
                 PixelImage(canvas: mainCanvas(now: now, t: t), scale: 3)
@@ -181,12 +187,26 @@ struct PanelStage: View {
     @ViewBuilder private func caption(now: Date) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
+                // With the scene folded away the agent keeps its face here.
+                if !preferences.showsPanelScene, let session {
+                    FaceView(figure: session.provider.figure, scale: 2.4, busy: session.status.tone == .busy)
+                        .frame(width: 26, height: 16)
+                }
                 StatusDot(tone: session?.status.tone ?? .idle)
                 Text(headline(now: now))
                     .font(.mono(13.5, .semibold))
                     .foregroundStyle(accent)
                 Spacer(minLength: 0)
                 Text(session?.label ?? "").font(.mono(10)).foregroundStyle(Palette.faint)
+                Button {
+                    preferences.showsPanelScene.toggle()
+                } label: {
+                    Image(systemName: preferences.showsPanelScene ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.faint)
+                .help(preferences.showsPanelScene ? "Fold the pixel scene away" : "Show the pixel scene")
             }
             .lineLimit(1)
             .frame(height: 18)
